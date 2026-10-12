@@ -132,6 +132,11 @@ async function api(p){let r;const u='https://www.googleapis.com/drive/v3/'+p;
   if(S.key)r=await fetch(u+(p.includes('?')?'&':'?')+'key='+encodeURIComponent(S.key));
   else{const t=await auth();r=await fetch(u,{headers:{Authorization:'Bearer '+t}})}
   if(!r.ok)throw new Error(r.status===403||r.status===404?'Sem acesso: partilha a pasta como "Qualquer pessoa com o link" e confirma a API key':'Erro Drive '+r.status);return r}
+const canSW=()=>'serviceWorker' in navigator&&location.protocol!=='file:';
+const swUrl=f=>new URL('stream/'+f.id+'?s='+(f.size||0)+'&n='+encodeURIComponent(f.name),location.href).href;
+const direct=f=>S.key?mediaUrl(f.id):swUrl(f);
+async function prepSW(){await auth();await(await caches.open('reel-tok')).put('/__tok',new Response(JSON.stringify({tok})));await navigator.serviceWorker.ready;
+  if(!navigator.serviceWorker.controller)await new Promise(r=>{navigator.serviceWorker.addEventListener('controllerchange',r,{once:true});setTimeout(r,3000)})}
 async function ls(id,fo){let out=[],pt='';const q=`'${id}' in parents and trashed=false`+(fo?" and mimeType='application/vnd.google-apps.folder'":'');
   do{const r=await(await api(`files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,size,thumbnailLink)&pageSize=1000&orderBy=name${pt?'&pageToken='+pt:''}`)).json();out.push(...r.files);pt=r.nextPageToken}while(pt);return out}
 async function scan(lib){const out=[];
@@ -196,10 +201,11 @@ function home(m){
    (cont.length?rowH('Continuar a ver',cont.map(f=>fcard(f,(f.show?f.show+' · ':'')+status(f.id)))):'')+
    S.libs.map(l=>{const fs=S.cache[l.id]||[];if(!fs.length)return'';
      return rowH(l.name,l.type==='series'?Object.entries(showsOf(l)).map(([n,e])=>scard(l,n,e)):fs.map(f=>fcard(f)))}).join('')+'<div style="height:60px"></div>'}
-function settings(){$('#main').innerHTML=`<div class="pg" style="padding-top:120px"><h1>Ligar ao Google Drive</h1><div class="sub">Cola a tua API key. Depois, ao criar uma biblioteca, cola o link da pasta.</div>
-  <div class="box"><label>API key da Google<input id="key" value="${esc(S.key)}" placeholder="AIzaSy…" autocomplete="off"></label>
-  <p style="color:var(--mut);margin:0 0 18px">A pasta no Drive tem de estar partilhada como <b style="color:#fff">"Qualquer pessoa com o link" (Leitor)</b>, e a <b style="color:#fff">Google Drive API</b> ativa no projeto da chave.</p>
-  <button class="pri" onclick="S.key=$('#key').value.trim();S.cid='';save();if(!S.key)return toast('Cola a API key');toast('API key guardada');go()">Guardar</button></div></div>`}
+function settings(){$('#main').innerHTML=`<div class="pg" style="padding-top:120px"><h1>Ligar ao Google Drive</h1><div class="sub">Entras com a tua conta Google (só leitura). Os teus ficheiros não sofrem o limite de transferências dos links públicos.</div>
+  <div class="box"><ol><li>Na <b>Google Cloud Console</b>, ativa a <b>Google Drive API</b>.</li><li>Em <i>Ecrã de consentimento OAuth</i>, escolhe <i>Externo</i> e adiciona o teu email em <b>Utilizadores de teste</b>.</li><li>Em <i>Credenciais</i>, cria um <b>ID de cliente OAuth</b> (<i>Aplicação Web</i>) e em <i>Origens JavaScript autorizadas</i> junta exatamente: <code>${location.origin}</code></li><li>Cola o Client ID abaixo.</li></ol>
+  <label>Client ID OAuth<input id="cid" value="${esc(S.cid)}" placeholder="123456-abc.apps.googleusercontent.com"></label>
+  <details style="margin-bottom:16px;color:var(--mut)"><summary style="cursor:pointer">Alternativa: API key (só pastas públicas)</summary><label>API key<input id="key" value="${esc(S.key)}" placeholder="AIzaSy…"></label></details>
+  <button class="pri" onclick="S.cid=$('#cid').value.trim();S.key=S.cid?'':($('#key').value.trim());save();if(S.cid)auth().then(()=>{toast('Ligado ao Drive');go()}).catch(e=>toast(e.message));else if(S.key){toast('API key guardada');go()}else toast('Cola o Client ID')">Guardar e ligar</button></div></div>`}
 
 /* ---- libraries ---- */
 let stack=[];
@@ -227,6 +233,7 @@ async function blobOf(f,tag){const r=await api(`files/${f.id}?alt=media`);const 
     if(f.size)$('#ld').textContent=`${tag} ${Math.round(got/f.size*100)}% · ${(got/1e6).toFixed(0)} / ${(f.size/1e6).toFixed(0)} MB`}
   return new Blob(ch,{type:f.mime||'video/mp4'})}
 async function dl(id){const f=byId(id);
+  if(!S.key&&canSW()){try{await prepSW();const a=document.createElement('a');a.href=swUrl(f)+'&dl=1';document.body.appendChild(a);a.click();a.remove();toast('Download iniciado: vê as transferências do browser')}catch(e){toast(e.message)}return}
   if(S.key){const a=document.createElement('a');a.href=`https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;document.body.appendChild(a);a.click();a.remove();return toast('Download iniciado: vê as transferências do browser')}
   toast('A descarregar '+title(f.name)+'… (pode demorar)');
   try{const b=await blobOf(f,'A descarregar');const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f.name;a.click();toast('Download concluído')}catch(e){toast(e.message)}}
@@ -235,18 +242,18 @@ async function play(id){const f=byId(id);cur=f;const v=$('#vid');v.style.display
   const lib=S.libs.find(l=>l.id===f.lib),eps=lib&&lib.type==='series'&&f.show?showsOf(lib)[f.show]:[];
   nxt=eps[eps.findIndex(e=>e.id===id)+1]||null;$('#nx').style.display=nxt?'block':'none';
   $('#pt').textContent=(f.show?f.show+' · ':'')+title(f.name);$('#ifr')?.remove();$('#ld').style.pointerEvents='none';$('#ld').style.display='flex';$('#ld').textContent='A carregar…';$('#pl').classList.add('on');
-  try{let src;if(S.key)src=mediaUrl(f.id);else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}const p=P(id);
+  try{let src;if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}const p=P(id);
     v.src=src;$('#ld').style.display='none';v.style.display='block';
     v.onloadedmetadata=()=>{if(!p.w&&p.t>5&&p.t<v.duration-10)v.currentTime=p.t;v.play().catch(()=>{})};
     v.onerror=async()=>{v.style.display='none';const ce=v.error?v.error.code:0;let why='O browser não conseguiu reproduzir este ficheiro.';
-      try{const ac=new AbortController();const r=await fetch(mediaUrl(f.id),{signal:ac.signal});
+      try{const ac=new AbortController();const r=await fetch(direct(f),{signal:ac.signal});
         if(r.ok){ac.abort();why=`O Drive entregou o ficheiro (${r.headers.get('content-type')||'?'}), mas o Safari não o descodificou (erro ${ce}). Costuma ser o codec: vídeo HEVC 10-bit/AV1 ou áudio DTS/TrueHD dentro do MP4.`}
         else{let j={};try{j=await r.json()}catch(e){}const rs=j.error?.errors?.[0]?.reason||j.error?.status||'';
           const M={downloadQuotaExceeded:'O Google limitou temporariamente as transferências deste ficheiro (ficheiros grandes ou muito acedidos; costuma repor em até 24h). Faz uma cópia no teu Drive e usa a cópia.',rateLimitExceeded:'Demasiados pedidos seguidos. Espera uns minutos.',userRateLimitExceeded:'Demasiados pedidos seguidos. Espera uns minutos.',dailyLimitExceeded:'A quota diária da API key esgotou.',keyInvalid:'A API key é inválida.',forbidden:'Sem permissão: a pasta tem de estar partilhada como "Qualquer pessoa com o link".',notFound:'Ficheiro não encontrado ou não partilhado.'};
           why=(M[rs]||'O Drive recusou o pedido.')+` [${r.status}${rs?' '+rs:''}]`}
       }catch(e){why='O Safari bloqueou a leitura da resposta do Drive ('+e.message+'). Isto é comum quando a página é aberta por file://. Clica em "Abrir link direto" para ver a resposta real da Google.'}
       const l=$('#ld');l.style.display='flex';l.style.pointerEvents='auto';
-      l.innerHTML=`<div style="max-width:600px">${esc(why)}<div class="btns" style="justify-content:center;margin-top:20px"><button class="btn" onclick="play('${f.id}')">↻ Tentar novamente</button><button class="btn s" onclick="driveEmbed('${f.id}')">Player do Drive</button><button class="btn s" onclick="dl('${f.id}')">↓ Descarregar</button><a class="btn s" style="text-decoration:none" href="${S.key?mediaUrl(f.id):'#'}" target="_blank" rel="noopener">Abrir link direto</a></div></div>`};
+      l.innerHTML=`<div style="max-width:600px">${esc(why)}<div class="btns" style="justify-content:center;margin-top:20px"><button class="btn" onclick="play('${f.id}')">↻ Tentar novamente</button><button class="btn s" onclick="driveEmbed('${f.id}')">Player do Drive</button><button class="btn s" onclick="dl('${f.id}')">↓ Descarregar</button><a class="btn s" style="text-decoration:none" href="${direct(f)}" target="_blank" rel="noopener">Abrir link direto</a></div></div>`};
     v.ontimeupdate=()=>{if(Date.now()-lastSave>4000)persist()};v.onpause=persist;v.onended=()=>{persist();if(nxt)nextEp()};
   }catch(e){$('#ld').textContent=e.message}}
 let embT=0;
@@ -262,6 +269,7 @@ function persist(){const v=$('#vid');if(!cur||!v.duration)return;lastSave=Date.n
 function closePlayer(){const emb=!!$('#ifr');if(emb)askStop();else persist();$('#ifr')?.remove();const v=$('#vid');v.pause();v.removeAttribute('src');cur=null;$('#pl').classList.remove('on');render2()}
 addEventListener('keydown',e=>{if(e.key==='Escape'&&cur)closePlayer()});
 
+if(canSW())navigator.serviceWorker.register('sw.js').catch(()=>{});
 render();
 </script>
 </body>
