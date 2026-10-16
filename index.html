@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REEL</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800;900&display=swap" rel="stylesheet">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+:root{--bg:#0c0b11;--tx:#f3f3f5;--mut:#a0a0aa;--ac:#7b5bf5;--ok:#5de0a8}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 Inter,system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button{font:inherit;cursor:pointer;border:0;color:inherit}
+button:focus-visible,.c:focus-visible{outline:2px solid #fff;outline-offset:2px}
+/* nav */
+#nv{position:fixed;top:0;left:0;right:0;height:68px;display:flex;align-items:center;gap:28px;padding:0 4%;z-index:10;background:linear-gradient(#0c0b11e6,#0000);transition:background .3s}
+#nv.s{background:#0c0b11f2}
+.logo{font-weight:900;font-size:26px;letter-spacing:.14em;color:#9b83ff;cursor:pointer}
+#nv nav{display:flex;gap:20px;overflow-x:auto;scrollbar-width:none;flex:1}
+#nv nav a{color:#d0d0d6;cursor:pointer;white-space:nowrap;font-size:14px;font-weight:500}
+#nv nav a:hover{color:#fff}#nv nav a.on{color:#fff;font-weight:700}
+.ib{background:#ffffff1f;border-radius:50%;width:36px;height:36px;font-size:18px}
+.ib:hover{background:#ffffff40}
+/* hero */
+.hero{position:relative;height:82vh;min-height:480px;display:flex;align-items:flex-end;background:linear-gradient(135deg,var(--h1),var(--h2));overflow:hidden}
+.hero>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,#0c0b11ee 0%,#0c0b1166 45%,#0000 70%),linear-gradient(0deg,var(--bg) 0%,#0000 35%)}
+.hero .in{position:relative;z-index:2;padding:0 4% 11vh;max-width:680px}
+.tag{color:var(--ac);font-weight:800;font-size:13px;margin-bottom:8px}
+.hero h1{font-size:clamp(34px,5.5vw,72px);line-height:1;font-weight:900;margin:0 0 14px;letter-spacing:-.03em;text-shadow:0 2px 24px #0008}
+.hero p{color:#d6d6dc;margin:0 0 22px}
+.btns{display:flex;gap:12px;flex-wrap:wrap}
+.btn{display:flex;align-items:center;gap:8px;padding:10px 26px;border-radius:8px;font-weight:700;font-size:17px;background:var(--ac);color:#fff}
+.btn:hover{background:#9279ff}.btn.s{background:#ffffff1f;color:#fff}.btn.s:hover{background:#ffffff38}
+/* rows */
+.rw{margin:-6vh 0 0;position:relative;z-index:3}.rw+.rw{margin-top:0}
+.rw h3{margin:18px 4% 0;font-size:20px;font-weight:700}
+.sc{position:relative}
+.rl{display:flex;gap:8px;overflow-x:auto;padding:28px 4%;scrollbar-width:none;scroll-snap-type:x proximity}
+.rl::-webkit-scrollbar{display:none}
+.ar{position:absolute;top:28px;bottom:28px;width:4%;background:#000a;font-size:28px;opacity:0;transition:opacity .2s;z-index:4}
+.sc:hover .ar{opacity:1}.ar.l{left:0}.ar.r{right:0}
+/* cards */
+.c{flex:0 0 clamp(230px,19vw,310px);aspect-ratio:16/9;border-radius:6px;position:relative;overflow:hidden;cursor:pointer;background:linear-gradient(135deg,var(--h1),var(--h2));scroll-snap-align:start;transition:transform .25s,box-shadow .25s}
+.c img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.c:after{content:"";position:absolute;inset:0;background:linear-gradient(0deg,#000e 0%,#0000 55%)}
+.c:hover,.c:focus-visible{transform:scale(1.12);z-index:5;box-shadow:0 0 0 2px var(--ac),0 14px 40px #000c}
+.ct{position:absolute;left:12px;right:12px;bottom:12px;z-index:2;font-weight:700;line-height:1.2}
+.ct small{display:block;font-weight:400;color:#cfcfd6;font-size:12px;margin-top:2px}
+.pb{position:absolute;left:0;right:0;bottom:0;height:4px;background:#ffffff40;z-index:3}.pb i{display:block;height:100%;background:var(--ac)}
+.bd{position:absolute;top:8px;left:8px;z-index:3;background:#000a;color:var(--ok);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px}
+.act{position:absolute;top:8px;right:8px;z-index:3;display:flex;gap:6px;opacity:0;transition:opacity .2s}
+.c:hover .act,.c:focus-within .act{opacity:1}
+.act button{width:30px;height:30px;border-radius:50%;background:#000b;border:1px solid #fff8;font-size:14px}
+.act button:hover{background:var(--ac);border-color:var(--ac)}
+/* pages */
+.pg{padding:100px 4% 60px}.pg h1{font-size:40px;font-weight:900;margin:0;letter-spacing:-.02em}
+.sub{color:var(--mut);margin:4px 0 24px}.sub a{color:#fff;cursor:pointer;text-decoration:underline}
+.gr{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:18px 10px}
+.gr .c{flex:none}
+.back{color:var(--mut);cursor:pointer;display:inline-block;margin-bottom:14px}
+.tabs{display:flex;gap:8px;margin:8px 4% 12px;flex-wrap:wrap}
+.tabs button{background:#ffffff14;padding:7px 18px;border-radius:99px;font-weight:600}.tabs button.on{background:var(--ac);color:#fff}
+.ep{display:flex;gap:18px;align-items:center;padding:14px 4%;cursor:pointer;border-bottom:1px solid #ffffff14}
+.ep:hover{background:#ffffff0d}
+.ep .n{width:28px;font-size:22px;color:var(--mut);text-align:center}
+.ep .th{position:relative;flex:0 0 190px;aspect-ratio:16/9;border-radius:6px;overflow:hidden;background:linear-gradient(135deg,var(--h1),var(--h2))}
+.ep .th img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.ep .tx{flex:1;min-width:0}.ep .tx b{display:block;font-size:16px}.ep .tx span{color:var(--mut);font-size:13px}
+.ep .ab{display:flex;gap:8px}.ep .ab button{background:#ffffff1f;border-radius:6px;padding:7px 12px;font-size:13px;font-weight:600}.ep .ab button:hover{background:#ffffff40}
+/* forms / modal */
+.box{background:#181622;border:1px solid #ffffff1a;border-radius:12px;padding:28px;max-width:620px}
+.box ol{padding-left:20px;color:var(--mut)}.box code{background:#ffffff1a;padding:1px 6px;border-radius:4px;color:#fff}
+.pri{background:var(--ac);color:#fff;padding:10px 22px;border-radius:6px;font-weight:700}
+.gh{background:#ffffff1f;padding:10px 22px;border-radius:6px;font-weight:600}
+input,select{font:inherit;background:#0c0b11;color:#fff;border:1px solid #ffffff2e;border-radius:6px;padding:10px 12px;width:100%;margin:6px 0 14px}
+.modal{position:fixed;inset:0;background:#000c;display:none;align-items:center;justify-content:center;z-index:20;padding:16px}.modal.on{display:flex}
+.modal>div{background:#181622;border-radius:12px;padding:26px;width:520px;max-width:100%;max-height:88vh;overflow:auto}
+.f{padding:9px 10px;border-radius:6px;cursor:pointer}.f:hover{background:#ffffff14}
+/* player */
+#pl{position:fixed;inset:0;background:#000;z-index:30;display:none}#pl.on{display:block}
+#pl video{width:100%;height:100%;object-fit:contain;background:#000}
+#pb{position:absolute;top:0;left:0;right:0;padding:18px 3%;display:flex;gap:16px;align-items:center;background:linear-gradient(#000b,#0000);z-index:2;transition:opacity .3s}
+#pb b{flex:1;font-size:18px}
+#ld{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mut);text-align:center;padding:30px;pointer-events:none}
+#msg{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ac);color:#fff;font-weight:600;padding:10px 20px;border-radius:6px;display:none;z-index:40}
+@media(max-width:760px){.ep .th{flex-basis:120px}.ep .ab{display:none}.hero{height:70vh}#nv{gap:14px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+/* intro */
+#intro{position:fixed;inset:0;z-index:100;background:#0c0b11;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden}
+#intro .st{position:relative;display:flex;flex-direction:column;align-items:center;transition:transform .9s cubic-bezier(.7,0,.3,1)}
+#intro.out{opacity:0;pointer-events:none;transition:opacity .7s ease .1s}
+#intro.out .st{transform:scale(1.5)}
+#intro .glow{position:absolute;width:80vmin;height:80vmin;border-radius:50%;background:radial-gradient(circle,#7b5bf566 0%,#7b5bf51a 40%,#0000 65%);opacity:0;animation:iglow 2.6s ease-out .2s forwards}
+@keyframes iglow{0%{opacity:0;transform:scale(.6)}40%{opacity:1}100%{opacity:.7;transform:scale(1.15)}}
+#intro .lg{position:relative;display:flex;font-weight:900;font-size:clamp(56px,15vw,150px);letter-spacing:.12em;line-height:1;overflow:hidden;padding:.1em 0 .1em .12em}
+#intro .lg span{display:inline-block;background:linear-gradient(180deg,#cfc3ff,#7b5bf5 75%);-webkit-background-clip:text;background-clip:text;color:transparent;opacity:0;animation:irise .9s cubic-bezier(.2,.8,.2,1) forwards;animation-delay:calc(.45s + var(--i)*.12s)}
+@keyframes irise{from{opacity:0;transform:translateY(.35em) scale(.85);filter:blur(16px)}to{opacity:1;transform:none;filter:blur(0)}}
+#intro .lg:after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,#0000 38%,#ffffffc0 50%,#0000 62%);transform:translateX(-120%);animation:isweep 1.1s ease-in-out 1.5s forwards;mix-blend-mode:overlay}
+@keyframes isweep{to{transform:translateX(120%)}}
+#intro .ln{height:2px;width:0;margin-top:4px;background:linear-gradient(90deg,#0000,#7b5bf5,#0000);animation:iln 1s ease-out .1s forwards}
+@keyframes iln{to{width:min(60vw,420px)}}
+#intro .tg{margin-top:20px;padding-left:.42em;color:#a0a0aa;letter-spacing:.42em;font-size:clamp(10px,1.6vw,14px);font-weight:500;opacity:0;animation:ifade .8s ease 1.6s forwards}
+@keyframes ifade{to{opacity:1}}
+@media(prefers-reduced-motion:reduce){#intro{display:none}}
+</style>
+</head>
+<body>
+<div id="intro" aria-hidden="true"><div class="glow"></div><div class="st"><div class="lg"><span style="--i:0">R</span><span style="--i:1">E</span><span style="--i:2">E</span><span style="--i:3">L</span></div><div class="ln"></div><div class="tg">O TEU DISCO · O TEU CINEMA</div></div></div>
+<script>try{if(sessionStorage.getItem('reelIntro')||matchMedia('(prefers-reduced-motion:reduce)').matches)document.getElementById('intro').remove()}catch(e){}</script>
+<header id="nv"></header>
+<main id="main"></main>
+
+<div class="modal" id="m1"><div>
+  <h3 style="margin:0 0 14px;font-size:22px">Nova biblioteca</h3>
+  <label>Nome<input id="ln" placeholder="Filmes, Séries, Anime…"></label>
+  <label>Tipo<select id="lt"><option value="movies">Filmes (cada ficheiro é um título)</option><option value="series">Séries (cada subpasta é uma série)</option></select></label>
+  <label>Link ou ID da pasta do Drive<input id="fid" placeholder="https://drive.google.com/drive/folders/…"></label>
+  <div id="browse"><div style="color:var(--mut);margin-bottom:6px">Ou escolhe a pasta (modo OAuth):</div><div id="crumb" style="margin-bottom:6px"></div>
+  <div id="folders" style="border:1px solid #ffffff1f;border-radius:8px;max-height:220px;overflow:auto;margin-bottom:16px"></div></div>
+  <div style="display:flex;gap:8px;justify-content:flex-end"><button class="gh" onclick="$('#m1').classList.remove('on')">Cancelar</button><button class="pri" id="mk">Usar esta pasta</button></div>
+</div></div>
+
+<div id="pl">
+  <div id="pb"><button class="ib" onclick="closePlayer()" aria-label="Voltar">←</button><b id="pt"></b><button class="btn s" id="nx" style="display:none;padding:8px 18px;font-size:15px" onclick="nextEp()">Próximo ▶</button></div>
+  <div id="ld"></div><video id="vid" controls style="display:none"></video>
+</div>
+<div id="msg"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const enc=s=>encodeURIComponent(s).replace(/'/g,'%27');
+let S={};try{S=JSON.parse(localStorage.getItem('reel')||'{}')}catch(e){}
+S.cid??='';S.key??='';delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
+const save=()=>localStorage.setItem('reel',JSON.stringify(S));
+let V={lib:null,show:null,home:true,season:null};
+const toast=t=>{const m=$('#msg');m.textContent=t;m.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display='none',3500)};
+
+/* ---- Google + Drive ---- */
+let tok=null,exp=0;
+function auth(){return new Promise((res,rej)=>{
+  if(tok&&Date.now()<exp)return res(tok);
+  if(!window.google)return rej(new Error('Script da Google não carregou'));
+  google.accounts.oauth2.initTokenClient({client_id:S.cid,scope:'https://www.googleapis.com/auth/drive.readonly',
+    callback:r=>{if(r.error)return rej(new Error(r.error));tok=r.access_token;exp=Date.now()+(r.expires_in-60)*1000;res(tok)}}).requestAccessToken()})}
+const mediaUrl=id=>`https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${encodeURIComponent(S.key)}`;
+async function api(p){let r;const u='https://www.googleapis.com/drive/v3/'+p;
+  if(S.key)r=await fetch(u+(p.includes('?')?'&':'?')+'key='+encodeURIComponent(S.key));
+  else{const t=await auth();r=await fetch(u,{headers:{Authorization:'Bearer '+t}})}
+  if(!r.ok)throw new Error(r.status===403||r.status===404?'Sem acesso: partilha a pasta como "Qualquer pessoa com o link" e confirma a API key':'Erro Drive '+r.status);return r}
+const canSW=()=>'serviceWorker' in navigator&&location.protocol!=='file:';
+const swUrl=f=>new URL('stream/'+f.id+'?s='+(f.size||0)+'&n='+encodeURIComponent(f.name),location.href).href;
+const direct=f=>S.key?mediaUrl(f.id):swUrl(f);
+async function prepSW(){await auth();await(await caches.open('reel-tok')).put('/__tok',new Response(JSON.stringify({tok})));await navigator.serviceWorker.ready;
+  if(!navigator.serviceWorker.controller)await new Promise(r=>{navigator.serviceWorker.addEventListener('controllerchange',r,{once:true});setTimeout(r,3000)})}
+async function ls(id,fo){let out=[],pt='';const q=`'${id}' in parents and trashed=false`+(fo?" and mimeType='application/vnd.google-apps.folder'":'');
+  do{const r=await(await api(`files?q=${encodeURIComponent(q)}&fields=nextPageToken,files(id,name,mimeType,size,thumbnailLink)&pageSize=1000&orderBy=name${pt?'&pageToken='+pt:''}`)).json();out.push(...r.files);pt=r.nextPageToken}while(pt);return out}
+async function scan(lib){const out=[];
+  async function w(id,show){for(const f of await ls(id)){
+    if(f.mimeType==='application/vnd.google-apps.folder')await w(f.id,show||f.name);
+    else if(f.mimeType.startsWith('video/')||/\.(mkv|mp4|avi|mov|webm|m4v)$/i.test(f.name))out.push({id:f.id,name:f.name,size:+f.size||0,mime:f.mimeType,show:show||'',lib:lib.id,th:f.thumbnailLink||''})}}
+  await w(lib.folder,'');S.cache[lib.id]=out;save()}
+
+/* ---- helpers ---- */
+const title=n=>n.replace(/\.[^.]+$/,'').replace(/[._]+/g,' ').trim();
+const se=n=>{const m=n.match(/s(\d{1,2})\s*e(\d{1,3})/i)||n.match(/(\d{1,2})x(\d{2,3})/i);return m?[+m[1],+m[2]]:[0,0]};
+const hue=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return h};
+const hv=s=>`--h1:hsl(${245+hue(s)%40} 28% 24%);--h2:hsl(250 18% 9%)`;
+const th=(f,w=640)=>f&&f.th?`<img loading="lazy" referrerpolicy="no-referrer" src="${esc(f.th.replace(/=s\d+$/,'=s'+w))}" onerror="this.remove()">`:'';
+const P=id=>S.prog[id]||{t:0,d:0,w:false};
+const pct=id=>{const p=P(id);return p.w?100:p.d?Math.min(100,p.t/p.d*100):0};
+const mmss=s=>{s=Math.floor(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
+const status=id=>{const p=P(id);return p.w?'Visto':p.t>5?`Parou em ${mmss(p.t)}`:'Por ver'};
+const allFiles=()=>Object.values(S.cache).flat();
+const byId=id=>allFiles().find(f=>f.id===id);
+const sortEps=a=>a.sort((x,y)=>{const p=se(x.name),q=se(y.name);return p[0]-q[0]||p[1]-q[1]||x.name.localeCompare(y.name)});
+const showsOf=lib=>{const o={};(S.cache[lib.id]||[]).forEach(f=>(o[f.show||'Outros']??=[]).push(f));Object.values(o).forEach(sortEps);return o};
+const nextUp=eps=>eps.find(e=>!P(e.id).w&&P(e.id).t>5)||eps.find(e=>!P(e.id).w)||eps[0];
+
+/* ---- UI pieces ---- */
+function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL</span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
+addEventListener('scroll',()=>$('#nv').classList.toggle('s',scrollY>40));
+function fcard(f,sub){return`<div class="c" tabindex="0" style="${hv(f.name)}" onclick="play('${f.id}')">${th(f)}${P(f.id).w?'<span class="bd">✓ VISTO</span>':''}<div class="act"><button title="Marcar visto/por ver" onclick="event.stopPropagation();mark('${f.id}')">✓</button><button title="Descarregar" onclick="event.stopPropagation();dl('${f.id}')">↓</button></div><div class="ct">${esc(title(f.name))}<small>${esc(sub||status(f.id))}</small></div><div class="pb"><i style="width:${pct(f.id)}%"></i></div></div>`}
+function scard(lib,name,eps){const w=eps.filter(e=>P(e.id).w).length,t=eps.find(e=>e.th)||eps[0];
+  return`<div class="c" tabindex="0" style="${hv(name)}" onclick="go('${lib.id}',decodeURIComponent('${enc(name)}'))">${th(t)}${w===eps.length?'<span class="bd">✓ COMPLETA</span>':''}<div class="ct">${esc(name)}<small>${w}/${eps.length} vistos</small></div><div class="pb"><i style="width:${w/eps.length*100}%"></i></div></div>`}
+const rowH=(t,cards)=>`<section class="rw"><h3>${esc(t)}</h3><div class="sc"><button class="ar l" onclick="sl(this,-1)">‹</button><div class="rl">${cards.join('')}</div><button class="ar r" onclick="sl(this,1)">›</button></div></section>`;
+function sl(b,d){const r=b.parentNode.querySelector('.rl');r.scrollBy({left:d*r.clientWidth*.85,behavior:'smooth'})}
+function hero(f,tag,label,onplay,extra=''){return`<div class="hero" style="${hv(f.show||f.name)}">${th(f,1280)}<div class="in"><div class="tag">${esc(tag)}</div><h1>${esc(label)}</h1><p>${esc(status(f.id))}${f.size?' · '+(f.size/1e9).toFixed(1)+' GB':''}</p><div class="btns"><button class="btn" onclick="${onplay}">▶ ${P(f.id).t>5&&!P(f.id).w?'Continuar':'Reproduzir'}</button>${extra}<button class="btn s" onclick="dl('${f.id}')">↓ Descarregar</button></div></div></div>`}
+
+/* ---- pages ---- */
+function render(){nav();scrollTo(0,0);const m=$('#main');
+  if(!S.cid&&!S.key)return settings();
+  if(V.home)return home(m);
+  const lib=S.libs.find(l=>l.id===V.lib);if(!lib)return home(m);
+  const files=S.cache[lib.id]||[];
+  const head=`<div class="pg"><h1>${esc(lib.name)}</h1><div class="sub">${files.length} vídeos · <a onclick="rescan('${lib.id}')">Atualizar Drive</a> · <a onclick="delLib('${lib.id}')">Remover biblioteca</a></div>`;
+  if(!files.length)return m.innerHTML=head+`<div class="box">Ainda sem vídeos. <button class="pri" onclick="rescan('${lib.id}')">Analisar pasta</button></div></div>`;
+  if(lib.type==='movies')return m.innerHTML=head+`<div class="gr">${files.map(f=>fcard(f)).join('')}</div></div>`;
+  const shows=showsOf(lib);
+  if(!V.show)return m.innerHTML=head+`<div class="gr">${Object.entries(shows).map(([n,e])=>scard(lib,n,e)).join('')}</div></div>`;
+  const eps=shows[V.show]||[],nx=nextUp(eps),seasons=[...new Set(eps.map(e=>se(e.name)[0]))];
+  if(V.season===null)V.season=se(nx.name)[0];
+  const [s,n]=se(nx.name);
+  m.innerHTML=hero(nx,'SÉRIE',V.show,`play('${nx.id}')`)
+   .replace('<p>',`<p>${s?`T${s}:E${n} · `:''}${eps.filter(e=>P(e.id).w).length}/${eps.length} vistos · `)+
+   `<div class="rw" style="margin-top:-4vh"><span class="back" style="margin:0 4%" onclick="go('${lib.id}')">← ${esc(lib.name)}</span>
+   <div class="tabs">${seasons.map(x=>`<button class="${x===V.season?'on':''}" onclick="V.season=${x};render2()">${x?'Temporada '+x:'Episódios'}</button>`).join('')}</div>
+   ${eps.filter(e=>se(e.name)[0]===V.season).map(e=>`<div class="ep" onclick="play('${e.id}')"><span class="n">${se(e.name)[1]||''}</span><div class="th" style="${hv(e.name)}">${th(e,400)}<div class="pb"><i style="width:${pct(e.id)}%"></i></div></div><div class="tx"><b>${esc(title(e.name))}</b><span>${status(e.id)}</span></div><div class="ab"><button onclick="event.stopPropagation();dl('${e.id}')">Descarregar</button><button onclick="event.stopPropagation();mark('${e.id}')">${P(e.id).w?'Por ver':'Marcar visto'}</button></div></div>`).join('')}</div>`}
+function render2(){const y=scrollY;render();scrollTo(0,y)}
+function home(m){
+  const cont=Object.entries(S.prog).filter(([id,p])=>!p.w&&p.t>5&&byId(id)).sort((a,b)=>b[1].at-a[1].at).map(x=>byId(x[0]));
+  const hf=cont[0]||allFiles()[0];
+  if(!hf)return m.innerHTML=`<div class="pg" style="padding-top:140px"><h1>Bem-vindo ao REEL</h1><div class="sub">O teu Drive, como uma plataforma de streaming.</div><button class="pri" onclick="newLib()">+ Criar a primeira biblioteca</button></div>`;
+  const lib=S.libs.find(l=>l.id===hf.lib)||S.libs.find(l=>(S.cache[l.id]||[]).some(x=>x.id===hf.id));
+  const isS=lib&&lib.type==='series'&&hf.show;
+  m.innerHTML=hero(hf,cont[0]?'CONTINUAR A VER':'EM DESTAQUE',isS?hf.show:title(hf.name),`play('${hf.id}')`,isS?`<button class="btn s" onclick="go('${lib.id}',decodeURIComponent('${enc(hf.show)}'))">ⓘ Episódios</button>`:'')+
+   (cont.length?rowH('Continuar a ver',cont.map(f=>fcard(f,(f.show?f.show+' · ':'')+status(f.id)))):'')+
+   S.libs.map(l=>{const fs=S.cache[l.id]||[];if(!fs.length)return'';
+     return rowH(l.name,l.type==='series'?Object.entries(showsOf(l)).map(([n,e])=>scard(l,n,e)):fs.map(f=>fcard(f)))}).join('')+'<div style="height:60px"></div>'}
+function settings(){$('#main').innerHTML=`<div class="pg" style="padding-top:120px"><h1>Ligar ao Google Drive</h1><div class="sub">Entras com a tua conta Google (só leitura). Os teus ficheiros não sofrem o limite de transferências dos links públicos.</div>
+  <div class="box"><ol><li>Na <b>Google Cloud Console</b>, ativa a <b>Google Drive API</b>.</li><li>Em <i>Ecrã de consentimento OAuth</i>, escolhe <i>Externo</i> e adiciona o teu email em <b>Utilizadores de teste</b>.</li><li>Em <i>Credenciais</i>, cria um <b>ID de cliente OAuth</b> (<i>Aplicação Web</i>) e em <i>Origens JavaScript autorizadas</i> junta exatamente: <code>${location.origin}</code></li><li>Cola o Client ID abaixo.</li></ol>
+  <label>Client ID OAuth<input id="cid" value="${esc(S.cid)}" placeholder="123456-abc.apps.googleusercontent.com"></label>
+  <details style="margin-bottom:16px;color:var(--mut)"><summary style="cursor:pointer">Alternativa: API key (só pastas públicas)</summary><label>API key<input id="key" value="${esc(S.key)}" placeholder="AIzaSy…"></label></details>
+  <button class="pri" onclick="S.cid=$('#cid').value.trim();S.key=S.cid?'':($('#key').value.trim());save();if(S.cid)auth().then(()=>{toast('Ligado ao Drive');go()}).catch(e=>toast(e.message));else if(S.key){toast('API key guardada');go()}else toast('Cola o Client ID')">Guardar e ligar</button></div></div>`}
+
+/* ---- libraries ---- */
+let stack=[];
+async function newLib(){if(!S.cid&&!S.key)return settings();
+  if(!S.key){try{await auth()}catch(e){return toast(e.message)}}
+  stack=[{id:'root',name:'O meu Drive'}];$('#ln').value='';$('#fid').value='';$('#browse').style.display=S.key?'none':'block';$('#m1').classList.add('on');if(!S.key)loadF()}
+async function loadF(){const c=stack[stack.length-1];
+  $('#crumb').innerHTML=stack.map((s,i)=>`<a href="#" style="color:#fff" onclick="stack=stack.slice(0,${i+1});loadF();return false">${esc(s.name)}</a>`).join(' / ');
+  $('#folders').innerHTML='<div class="f">A carregar…</div>';
+  try{const fs=await ls(c.id,true);$('#folders').innerHTML=fs.map(f=>`<div class="f" onclick='stack.push({id:"${f.id}",name:${JSON.stringify(f.name)}});loadF()'>📁 ${esc(f.name)}</div>`).join('')||'<div class="f" style="color:var(--mut)">Sem subpastas</div>'}catch(e){toast(e.message)}}
+$('#mk').onclick=async()=>{let fid,nm;const raw=$('#fid').value.trim();
+  if(raw){const m=raw.match(/folders\/([\w-]+)|[?&]id=([\w-]+)/);fid=m?(m[1]||m[2]):raw;nm='Biblioteca'}
+  else{const c=stack[stack.length-1];if(S.key||c.id==='root')return toast(S.key?'Cola o link da pasta':'Abre primeiro uma pasta');fid=c.id;nm=c.name}
+  const lib={id:'l'+Date.now(),name:$('#ln').value.trim()||nm,type:$('#lt').value,folder:fid};
+  S.libs.push(lib);save();$('#m1').classList.remove('on');await rescan(lib.id)};
+async function rescan(id){const lib=S.libs.find(l=>l.id===id);toast('A analisar o Drive…');
+  try{await scan(lib);toast(S.cache[id].length+' vídeos encontrados')}catch(e){toast(e.message)}V={lib:id,show:null,home:false,season:null};render()}
+function delLib(id){if(!confirm('Remover esta biblioteca? Os ficheiros no Drive não são tocados.'))return;S.libs=S.libs.filter(l=>l.id!==id);delete S.cache[id];save();go()}
+function go(l=null,s=null){V={lib:l,show:s,home:!l,season:null};render()}
+function mark(id){const p=S.prog[id]=P(id);p.w=!p.w;if(!p.w)p.t=0;p.at=Date.now();save();render2()}
+
+/* ---- download + play ---- */
+async function blobOf(f,tag){const r=await api(`files/${f.id}?alt=media`);const rd=r.body.getReader(),ch=[];let got=0;
+  for(;;){const{done,value}=await rd.read();if(done)break;ch.push(value);got+=value.length;
+    if(f.size)$('#ld').textContent=`${tag} ${Math.round(got/f.size*100)}% · ${(got/1e6).toFixed(0)} / ${(f.size/1e6).toFixed(0)} MB`}
+  return new Blob(ch,{type:f.mime||'video/mp4'})}
+async function dl(id){const f=byId(id);
+  if(!S.key&&canSW()){try{await prepSW();const a=document.createElement('a');a.href=swUrl(f)+'&dl=1';document.body.appendChild(a);a.click();a.remove();toast('Download iniciado: vê as transferências do browser')}catch(e){toast(e.message)}return}
+  if(S.key){const a=document.createElement('a');a.href=`https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;document.body.appendChild(a);a.click();a.remove();return toast('Download iniciado: vê as transferências do browser')}
+  toast('A descarregar '+title(f.name)+'… (pode demorar)');
+  try{const b=await blobOf(f,'A descarregar');const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f.name;a.click();toast('Download concluído')}catch(e){toast(e.message)}}
+let cur=null,lastSave=0,nxt=null;
+async function play(id){const f=byId(id);cur=f;const v=$('#vid');v.style.display='none';v.removeAttribute('src');
+  const lib=S.libs.find(l=>l.id===f.lib),eps=lib&&lib.type==='series'&&f.show?showsOf(lib)[f.show]:[];
+  nxt=eps[eps.findIndex(e=>e.id===id)+1]||null;$('#nx').style.display=nxt?'block':'none';
+  $('#pt').textContent=(f.show?f.show+' · ':'')+title(f.name);$('#ifr')?.remove();$('#ld').style.pointerEvents='none';$('#ld').style.display='flex';$('#ld').textContent='A carregar…';$('#pl').classList.add('on');
+  try{let src;if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}const p=P(id);
+    v.src=src;$('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none'};setTimeout(()=>{if(cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
+    v.onloadedmetadata=()=>{if(!p.w&&p.t>5&&p.t<v.duration-10)v.currentTime=p.t;v.play().catch(()=>{})};
+    v.onerror=async()=>{v.style.display='none';const ce=v.error?v.error.code:0;let why='O browser não conseguiu reproduzir este ficheiro.',mk=false;
+      try{const ac=new AbortController();const r=await fetch(direct(f),{signal:ac.signal});
+        if(r.ok&&(/matroska|x-msvideo|avi/i.test(r.headers.get('content-type')||'')||/\.(mkv|avi|wmv|flv)$/i.test(f.name))){ac.abort();mk=true;why='Este ficheiro é MKV/AVI e os browsers não o reproduzem (o Safari nunca). Abre-o num player externo (VLC, IINA ou Infuse), que toca tudo, ou converte-o para MP4.'}
+        else if(r.ok){ac.abort();why=`O Drive entregou o ficheiro (${r.headers.get('content-type')||'?'}), mas o Safari não o descodificou (erro ${ce}). Costuma ser o codec: vídeo HEVC 10-bit/AV1 ou áudio DTS/TrueHD dentro do MP4.`}
+        else{let j={};try{j=await r.json()}catch(e){}const rs=j.error?.errors?.[0]?.reason||j.error?.status||'';
+          const M={downloadQuotaExceeded:S.key?'Estás a usar a API key (acesso público), que tem este limite. Abre as definições (⚙), cola o Client ID OAuth e clica em Guardar e ligar para usares o teu login Google.':'Mesmo com o teu login, o Google bloqueou este ficheiro. Isto acontece quando o ficheiro não é teu (foi partilhado por outra pessoa). Faz uma cópia para o teu Drive e usa a cópia.',rateLimitExceeded:'Demasiados pedidos seguidos. Espera uns minutos.',userRateLimitExceeded:'Demasiados pedidos seguidos. Espera uns minutos.',dailyLimitExceeded:'A quota diária da API key esgotou.',keyInvalid:'A API key é inválida.',forbidden:'Sem permissão: a pasta tem de estar partilhada como "Qualquer pessoa com o link".',notFound:'Ficheiro não encontrado ou não partilhado.'};
+          why=(M[rs]||'O Drive recusou o pedido.')+` [${r.status}${rs?' '+rs:''}]`}
+      }catch(e){why='O Safari bloqueou a leitura da resposta do Drive ('+e.message+'). Isto é comum quando a página é aberta por file://. Clica em "Abrir link direto" para ver a resposta real da Google.'}
+      const l=$('#ld');l.style.display='flex';l.style.pointerEvents='auto';
+      l.innerHTML=`<div style="max-width:600px">${esc(why)}<div class="btns" style="justify-content:center;margin-top:20px"><button class="btn" onclick="play('${f.id}')">↻ Tentar novamente</button><button class="btn s" onclick="driveEmbed('${f.id}')">Player do Drive</button><button class="btn s" onclick="dl('${f.id}')">↓ Descarregar</button>${mk?`<button class="btn" onclick="openExt('vlc','${f.id}')">▶ Abrir no VLC</button><button class="btn s" onclick="openExt('iina','${f.id}')">IINA</button><button class="btn s" onclick="openExt('infuse','${f.id}')">Infuse</button><button class="btn s" onclick="copyLink('${f.id}')">Copiar link</button>`:''}<a class="btn s" style="text-decoration:none" href="${direct(f)}" target="_blank" rel="noopener">Abrir link direto</a></div></div>`};
+    v.ontimeupdate=()=>{if(Date.now()-lastSave>4000)persist()};v.onpause=persist;v.onended=()=>{persist();if(nxt)nextEp()};
+  }catch(e){$('#ld').textContent=e.message}}
+async function diag(f){const l=$('#ld');l.style.display='flex';l.style.pointerEvents='auto';l.textContent='A diagnosticar…';const i=[];
+  i.push(navigator.serviceWorker&&navigator.serviceWorker.controller?'service worker: ativo':'service worker: INATIVO (atualiza a página com Cmd+Shift+R e tenta de novo)');
+  try{const r=await fetch(swUrl(f),{headers:{Range:'bytes=0-1'}});i.push('resposta: '+r.status,'content-range: '+(r.headers.get('content-range')||'-'),'tipo: '+(r.headers.get('content-type')||'-'));if(!r.ok)i.push((await r.text()).slice(0,240))}catch(e){i.push('erro: '+e.message)}
+  l.innerHTML=`<div style="max-width:620px">O vídeo não arrancou.<pre style="text-align:left;white-space:pre-wrap;color:#cfcfd6;font-size:13px;background:#ffffff0f;padding:12px;border-radius:8px;margin:14px 0">${esc(i.join('\n'))}</pre><div class="btns" style="justify-content:center"><button class="btn" onclick="play('${f.id}')">↻ Tentar novamente</button><button class="btn s" onclick="driveEmbed('${f.id}')">Player do Drive</button></div></div>`}
+async function extUrl(id){if(S.key)return mediaUrl(id);await auth();return `https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true&access_token=${encodeURIComponent(tok)}`}
+async function openExt(app,id){try{const u=await extUrl(id),e=encodeURIComponent(u);
+  location.href={vlc:'vlc://'+u,iina:'iina://weblink?url='+e,infuse:'infuse://x-callback-url/play?url='+e}[app];toast('A abrir no '+app.toUpperCase()+'… (se nada abrir, usa Copiar link)')}catch(e){toast(e.message)}}
+async function copyLink(id){try{await navigator.clipboard.writeText(await extUrl(id));toast('Link copiado. No VLC: Ficheiro > Abrir rede (Cmd+N) e cola')}catch(e){toast('Não foi possível copiar: '+e.message)}}
+let embT=0;
+function driveEmbed(id){embT=Date.now();const v0=$('#vid');v0.pause();v0.style.display='none';const q=P(id);if(q.t>5&&!q.w)toast('Última posição: '+mmss(q.t)+'. Usa a barra do player para saltar.');$('#ld').style.display='none';$('#ifr')?.remove();const i=document.createElement('iframe');i.id='ifr';i.src='https://drive.google.com/file/d/'+id+'/preview';i.allow='autoplay; fullscreen';i.style.cssText='position:absolute;inset:68px 0 0 0;width:100%;height:calc(100% - 68px);border:0;background:#000';$('#pl').appendChild(i)}
+function askStop(){if(!cur)return;const p=S.prog[cur.id]=P(cur.id),el=Math.round((Date.now()-embT)/1000);
+  const a=prompt('Onde ficaste? Escreve mm:ss (ex.: 45:10), "visto" se terminaste, ou deixa vazio para não guardar.',p.t>5?mmss(p.t):mmss(el));
+  if(a===null||!a.trim())return;
+  if(/vis/i.test(a)){p.w=true}else{const t=a.trim().split(':').map(Number);if(t.some(isNaN))return toast('Formato inválido');p.t=t.reduce((x,y)=>x*60+y,0);p.w=false}
+  p.at=Date.now();save()}
+function nextEp(){persist();if(nxt)play(nxt.id)}
+function persist(){const v=$('#vid');if(!cur||!v.duration)return;lastSave=Date.now();
+  const p=S.prog[cur.id]=P(cur.id);p.t=v.currentTime;p.d=v.duration;p.at=Date.now();if(p.t/p.d>.92)p.w=true;save()}
+function closePlayer(){const emb=!!$('#ifr');if(emb)askStop();else persist();$('#ifr')?.remove();const v=$('#vid');v.pause();v.removeAttribute('src');cur=null;$('#pl').classList.remove('on');render2()}
+addEventListener('keydown',e=>{if(e.key==='Escape'&&cur)closePlayer()});
+
+(()=>{const el=$('#intro');if(!el)return;try{sessionStorage.setItem('reelIntro','1')}catch(e){}
+  const end=()=>{el.classList.add('out');setTimeout(()=>el.remove(),900)};const t=setTimeout(end,3000);el.onclick=()=>{clearTimeout(t);end()}})();
+if(canSW())navigator.serviceWorker.register('sw.js').catch(()=>{});
+render();
+</script>
+</body>
+</html>
