@@ -496,6 +496,7 @@ async function start(f,v,t0,pref,hk={}){stop();
 return{ok,start,stop}})();
 
 /* ---- áudio e legendas ---- */
+const OWN=new WeakSet();
 const TK={a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,pref:'',si:-1};
 const LB={fre:'fra',ger:'deu',chi:'zho',dut:'nld',gre:'ell',cze:'ces',rum:'ron',per:'fas'};
 const tl=t=>{let c=String(t.bcp||t.lang||'').replace(/\0/g,'').toLowerCase();if(!c||c==='und')return'';c=LB[c]||c;try{const n=new Intl.DisplayNames(['pt'],{type:'language'}).of(c);return n?n[0].toUpperCase()+n.slice(1):c}catch(e){return c.toUpperCase()}};
@@ -505,16 +506,16 @@ const HK={aud:0,lb:tl,get pa(){return S.lp&&S.lp.a},
   tracks2(i){const v=$('#vid');TK.mk=true;
     if(TK.f===cur.id){i.aud.forEach(a=>{const o=TK.a.find(x=>x.n===a.n);if(o)o.cur=a.cur});return}
     TK.f=cur.id;TK.a=i.aud;TK.s=i.sub;
-    TK.s.forEach(t=>{if(!t.ok)return;const e=document.createElement('track');e.kind='subtitles';e.label=tn(t,0,'Legenda');v.appendChild(e);e.track.mode='hidden';t.tt=e.track;TK.tt[t.n]=t.tt});
+    TK.s.forEach(t=>{if(!t.ok)return;const k=v.addTextTrack('subtitles',tn(t,0,'Legenda'),String(t.bcp||t.lang||'und'));k.mode='hidden';OWN.add(k);t.tt=k;TK.tt[t.n]=k});
     TK.pd=true;const ps=S.lp&&S.lp.s,j=ps?TK.s.findIndex(t=>t.ok&&tl(t)===ps):-1;if(j>=0)setSub(j);trkBtn()},
   cur(n){TK.a.forEach(x=>x.cur=x.n===n)},
   sub(n,a,b,x){const t=TK.tt[n];if(!t)return;const k=n+'|'+a.toFixed(2)+'|'+x;if(TK.seen.has(k))return;TK.seen.add(k);try{t.addCue(new VTTCue(a,b,x))}catch(_){}}};
-function tkReset(){const v=$('#vid');v.querySelectorAll('track').forEach(e=>e.remove());Object.assign(TK,{a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,pref:'',si:-1});HK.aud=0;$('#tk').style.display='none';$('#tm').classList.remove('on')}
+function tkReset(){Object.values(TK.tt).forEach(t=>{try{for(const c of Array.from(t.cues||[]))t.removeCue(c);t.mode='disabled'}catch(e){}});Object.assign(TK,{a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,pref:'',si:-1});HK.aud=0;$('#tk').style.display='none';$('#tm').classList.remove('on')}
 function trkBtn(){$('#tk').style.display=TK.a.length>1||TK.s.length?'':'none'}
 function nativeTracks(v){if(TK.mk)return;try{nativeTracks2(v)}catch(e){console.warn('tracks',e)}}
 function nativeTracks2(v){
   TK.a=v.audioTracks?Array.from({length:v.audioTracks.length},(_,i)=>v.audioTracks[i]).map(t=>({nat:t,lang:t.language,name:t.label,ok:true,cur:t.enabled})):[];
-  TK.s=Array.from({length:v.textTracks.length},(_,i)=>v.textTracks[i]).filter(t=>/^(subtitles|captions|forced)$/.test(t.kind)).map(t=>({tt:t,lang:t.language,name:t.label,ok:true}));
+  TK.s=Array.from({length:v.textTracks.length},(_,i)=>v.textTracks[i]).filter(t=>!OWN.has(t)&&/^(subtitles|captions|forced)$/.test(t.kind)).map(t=>({tt:t,lang:t.language,name:t.label,ok:true}));
   TK.si=TK.s.findIndex(x=>x.tt.mode==='showing');
   if(!TK.pd&&(TK.a.length||TK.s.length)){TK.pd=true;const pa=S.lp&&S.lp.a,ps=S.lp&&S.lp.s;let j=pa?TK.a.findIndex(t=>tl(t)===pa):-1;if(j>=0&&!TK.a[j].cur)setAud(j);j=ps?TK.s.findIndex(t=>tl(t)===ps):-1;if(j>=0)setSub(j)}
   trkBtn()}
