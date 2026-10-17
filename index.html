@@ -203,7 +203,7 @@ async function covers(force){if(!S.tmdb||cvB)return;if(force)for(const k in S.ar
   cvB=false;if(!cur&&!$('#cid'))render2()}
 
 /* ---- UI pieces ---- */
-function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v4 · remux+capas</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
+function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v5 · remux+capas</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
 addEventListener('scroll',()=>$('#nv').classList.toggle('s',scrollY>40));
 function fcard(f,sub){return`<div class="c" tabindex="0" style="${hv(f.name)}" onclick="play('${f.id}')">${th(f)}${P(f.id).w?'<span class="bd">✓ VISTO</span>':''}<div class="act"><button title="Marcar visto/por ver" onclick="event.stopPropagation();mark('${f.id}')">✓</button><button title="Descarregar" onclick="event.stopPropagation();dl('${f.id}')">↓</button></div><div class="ct">${esc(title(f.name))}<small>${esc(sub||status(f.id))}</small></div><div class="pb"><i style="width:${pct(f.id)}%"></i></div></div>`}
 function scard(lib,name,eps){const w=eps.filter(e=>P(e.id).w).length,t=eps.find(e=>e.th)||eps[0];
@@ -316,7 +316,7 @@ async function rng(f,a,b){if(a>=f.size)return new U(0);
   const h={Range:`bytes=${a}-${b}`};if(!S.key)h.Authorization='Bearer '+await auth();
   const r=await fetch(u,{headers:h});if(!r.ok)throw new Error('Drive '+r.status);return new U(await r.arrayBuffer())}
 function stop(){if(!G)return;G.dead=true;if(G.pump)G.pump.dead=true;try{URL.revokeObjectURL(G.url)}catch(e){}G=null}
-async function start(f,v,t0){stop();
+async function start(f,v,t0,pref){stop();
   const MS=window.MediaSource||window.ManagedMediaSource,g=G={dead:false,sk:0,rst:true,ini:null};
   const first=new Promise((ok,no)=>{g.ok=ok;g.no=no});
   /* cabeçalho */
@@ -333,7 +333,7 @@ async function start(f,v,t0){stop();
       else if(j===0xE1)kids(b,s3,e3,(k,s4,e4)=>{if(k===0xB5)t.sr=flt(b,s4,e4);else if(k===0x9F)t.ch=uint(b,s4,e4)})});T.push(t)});
     p=s+h.sz}
   if(clus1<0)throw new Error('cabeçalho MKV demasiado grande');
-  const vt=T.find(t=>t.type===1),at=T.find(t=>t.type===2&&/^A_(EAC3|AAC)/.test(t.codec))||T.find(t=>t.type===2),dd={};T.forEach(t=>{if(t.dd)dd[t.n]=t.dd;if(t.ca===3&&t.cs)t.strip=t.cs});
+  let vt=T.find(t=>t.type===1),at=(pref==='aac'&&T.find(t=>t.type===2&&/^A_AAC/.test(t.codec)))||T.find(t=>t.type===2&&/^A_(EAC3|AAC)/.test(t.codec))||T.find(t=>t.type===2),dd={};T.forEach(t=>{if(t.dd)dd[t.n]=t.dd;if(t.ca===3&&t.cs)t.strip=t.cs});
   if([vt,at].some(t=>t&&t.ca===0))throw new Error('pista comprimida (zlib), não suportado');
   if(!vt||vt.codec!=='V_MPEG4/ISO/AVC'||!vt.cp)throw new Error('vídeo não é H.264');
   if(!at||!/^A_(EAC3|AAC)/.test(at.codec))throw new Error('áudio '+(at?at.codec:'?')+' não suportado');
@@ -355,9 +355,11 @@ async function start(f,v,t0){stop();
   const ahead=()=>{const r=v.buffered,t=v.currentTime;for(let i=0;i<r.length;i++)if(r.start(i)<=t+.5&&r.end(i)>=t)return r.end(i)-t;return 0};
   const trim=async()=>{const c=v.currentTime-60;if(c>10)for(const s of[vsb,asb])if(s.buffered.length&&s.buffered.start(0)<c-5)await rm(s,0,c)};
   const emit=async(pm,out,vs,as)=>{if(pm.dead)return;
-    const fx=(x,t)=>t.strip?{...x,d:cat(t.strip,x.d)}:x,V=out.filter(x=>x.tr===vt.n).map(x=>fx(x,vt)),A=out.filter(x=>x.tr===at.n).map(x=>fx(x,at));
+    const fx=(x,t)=>t.strip?{...x,d:cat(t.strip,x.d)}:x,hx=d=>[...d.slice(0,12)].map(x=>x.toString(16).padStart(2,'0')).join(' ');
+    if(!g.ini&&eac){const c=T.filter(t=>t.type===2&&t.codec==='A_EAC3').find(c=>{const x=out.find(y=>y.tr===c.n);if(!x)return false;const d=fx(x,c).d;return d[0]===0x0B&&d[1]===0x77});if(c)at=c}
+    const V=out.filter(x=>x.tr===vt.n).map(x=>fx(x,vt)),A=out.filter(x=>x.tr===at.n).map(x=>fx(x,at));
     if(!g.ini){if(!A.length)return;let ent;
-      if(eac){const d=A[0].d;if(d[0]!==0x0B||d[1]!==0x77)throw new Error('áudio não é E-AC-3 (bytes: '+[...d.slice(0,8)].map(x=>x.toString(16).padStart(2,'0')).join(' ')+', pistas: '+T.map(t=>t.type+':'+t.codec).join(' ')+')');
+      if(eac){const d=A[0].d;if(d[0]!==0x0B||d[1]!==0x77)throw new Error('áudio não é E-AC-3. Pistas de áudio: '+T.filter(t=>t.type===2).map(c=>{const x=out.find(y=>y.tr===c.n);return 'nº'+c.n+' '+c.codec+(c.ca!==undefined?' compr='+c.ca:'')+(x?' bloco['+x.d.length+'B]='+hx(x.d):' (sem bloco no 1º cluster)')}).join(' | '));
         const fs=[48000,44100,32000][d[4]>>6]||48000,nb=[1,2,3,6][d[4]>>4&3],kb=Math.round((((d[2]&7)<<8|d[3])+1)*16*fs/(nb*256)/1000);
         ent=aud('ec-3',at.ch||6,fs,box('dec3',i16(kb<<3),new U([d[4]>>6<<6|d[5]>>3<<1,(d[4]>>1&7)<<1|d[4]&1,0])))}
       else ent=aud('mp4a',at.ch||2,at.sr||48000,fb('esds',0,0,dsc(3,i16(0),new U([0]),dsc(4,new U([0x40,0x15,0,0,0]),i32(0),i32(0),dsc(5,at.cp)),dsc(6,new U([2])))));
@@ -403,7 +405,7 @@ async function play(id){const f=byId(id);MKV.stop();mkErr='';cur=f;const v=$('#v
   nxt=eps[eps.findIndex(e=>e.id===id)+1]||null;$('#nx').style.display=nxt?'block':'none';
   $('#pt').textContent=(f.show?f.show+' · ':'')+title(f.name);$('#ifr')?.remove();$('#ld').style.pointerEvents='none';$('#ld').style.display='flex';$('#ld').textContent='A carregar…';$('#pl').classList.add('on');
   try{const p=P(id);let src,mkv=false;
-    if(/\.mkv$/i.test(f.name)&&MKV.ok()){try{$('#ld').textContent='A preparar o MKV…';await MKV.start(f,v,!p.w&&p.t>5?p.t:0);mkv=true}catch(e){console.warn('MKV',e);mkErr=e.message;toast('Remux MKV falhou: '+e.message+'. A usar o método antigo.')}if(cur!==f)return}
+    if(/\.mkv$/i.test(f.name)&&MKV.ok()){try{$('#ld').textContent='A preparar o MKV…';const t0=!p.w&&p.t>5?p.t:0;try{await MKV.start(f,v,t0)}catch(e){if(!/E-AC-3/.test(e.message))throw e;console.warn('EAC3 falhou, a tentar AAC:',e.message);await MKV.start(f,v,t0,'aac');toast('A usar a pista AAC: a pista EAC3 deste ficheiro não é compatível')}mkv=true}catch(e){console.warn('MKV',e);mkErr=e.message;toast('Remux MKV falhou: '+e.message+'. A usar o método antigo.')}if(cur!==f)return}
     if(!mkv){if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}v.src=src}
     if(mkv)v.play().catch(()=>{});
     $('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none'};setTimeout(()=>{if(cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
