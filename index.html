@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>REEL</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800;900&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://en.wikipedia.org" crossorigin><link rel="preconnect" href="https://upload.wikimedia.org"><link rel="preconnect" href="https://itunes.apple.com"><link rel="preconnect" href="https://is1-ssl.mzstatic.com">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
 :root{--bg:#0c0b11;--tx:#f3f3f5;--mut:#a0a0aa;--ac:#7b5bf5;--ok:#5de0a8}
@@ -134,7 +135,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const enc=s=>encodeURIComponent(s).replace(/'/g,'%27');
 let S={};try{S=JSON.parse(localStorage.getItem('reel')||'{}')}catch(e){}
-S.cid??='';S.key??='';S.tmdb??='';S.art??={};if(S.artv!==6){S.art={};S.artv=6}delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
+S.cid??='';S.key??='';S.tmdb??='';S.art??={};if(S.artv!==7){S.art={};S.artv=7}delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
 const save=()=>localStorage.setItem('reel',JSON.stringify(S));
 let V={lib:null,show:null,home:true,season:null};
 const toast=t=>{const m=$('#msg');m.textContent=t;m.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display='none',3500)};
@@ -206,14 +207,9 @@ async function itu(k){const[t,q,y]=k.split('|'),nz=x=>x.toLowerCase().normalize(
 const nz=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g,'');
 const wtk=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(/[^a-z0-9]+/).filter(Boolean);
 const wcov=(q,t)=>{const a=wtk(q),b=new Set(wtk(t));return a.length?a.filter(w=>b.has(w)).length/a.length:0};
-async function jf(u,ms=10000){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms);try{const r=await fetch(u,{signal:ac.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(t)}}
-function imj(q){return new Promise((res,rej)=>{const k=q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').trim().replace(/\s+/g,'_');if(!k)return rej(new Error('imdb'));
-  const n='imdb$'+k,sc=document.createElement('script'),t=setTimeout(()=>{delete window[n];sc.remove();rej(new Error('imdb timeout'))},10000);
-  window[n]=d=>{clearTimeout(t);delete window[n];sc.remove();res(d)};sc.onerror=()=>{clearTimeout(t);delete window[n];sc.remove();rej(new Error('imdb indisponível'))};
-  sc.src='https://sg.media-imdb.com/suggests/'+k[0]+'/'+k+'.json';document.head.appendChild(sc)})}
+async function jf(u,ms=7000){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms);try{const r=await fetch(u,{signal:ac.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(t)}}
 async function imdb(q,y,t){
-  let d;try{d=await jf('https://v3.sg.media-imdb.com/suggestion/x/'+encodeURIComponent(q.toLowerCase())+'.json')}catch(e){d=await imj(q)}
-  const ok=t==='t'?/^(tvSeries|tvMiniSeries|TV series|TV mini-series)$/i:/^(movie|feature|tvMovie|TV movie|video)$/i,want=wtk(q).join(' ');
+  const d=await jf('https://v3.sg.media-imdb.com/suggestion/x/'+encodeURIComponent(q.toLowerCase())+'.json',6000),ok=t==='t'?/^(tvSeries|tvMiniSeries|TV series|TV mini-series)$/i:/^(movie|feature|tvMovie|TV movie|video)$/i,want=wtk(q).join(' ');
   const m=(d.d||[]).map((x,i)=>({x,i})).filter(({x})=>x.i&&x.i.imageUrl&&/^tt/.test(x.id||'')&&ok.test(x.qid||x.q||'')&&wcov(q,x.l)>=.75&&wcov(x.l,q)>=.5);
   const sc=({x,i})=>(wtk(x.l).join(' ')===want?0:100)+(y&&t==='m'?(+x.y===+y?0:Math.abs((+x.y||0)-y)<=1?10:60):0)+i;
   m.sort((a,b)=>sc(a)-sc(b));
@@ -222,17 +218,22 @@ async function tvm(q){const r=await jf('https://api.tvmaze.com/search/shows?q='+
   const m=r.filter(x=>x.show&&x.show.image&&nz(x.show.name).includes(n));
   m.sort((a,b)=>(nz(a.show.name)===n?0:1)-(nz(b.show.name)===n?0:1)||b.score-a.score);
   return m[0]?(m[0].show.image.original||m[0].show.image.medium).replace(/^http:/,'https:'):''}
-async function wk(q,y,t){let err=0,done=0;
+async function wk(q,y,t){let err=0,done=0;const qs=new Set(wtk(q));
   for(const lg of['en','pt']){
-    const hint=lg==='pt'?(t==='m'?'filme':'série'):(t==='m'?'film':'TV series');
+    const hint=lg==='pt'?(t==='m'?'filme':'série'):(t==='m'?'film':'television series'),api='https://'+lg+'.wikipedia.org/w/api.php?action=query&format=json&origin=*&';
     for(const term of(y&&t==='m'?[q+' '+y+' '+hint,q+' '+hint]:[q+' '+hint])){
-      try{const d=await jf('https://'+lg+'.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=0&gsrlimit=6&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=600&gsrsearch='+encodeURIComponent(term));done=1;
-        const pg=Object.values((d.query&&d.query.pages)||{}).sort((a,b)=>a.index-b.index);
-        const x=pg.find(p=>p.thumbnail&&p.thumbnail.height>p.thumbnail.width&&!/\.svg/i.test(p.thumbnail.source)&&wcov(q,p.title)>=.99);
-        if(x)return x.thumbnail.source}catch(e){err=1}}}
+      try{const d=await jf(api+'generator=search&gsrnamespace=0&gsrlimit=6&prop=revisions&rvprop=content&rvslots=main&rvsection=0&gsrsearch='+encodeURIComponent(term));done=1;
+        const c=Object.values((d.query&&d.query.pages)||{}).map(p=>{const r=p.revisions&&p.revisions[0],w=(r&&r.slots&&r.slots.main&&r.slots.main['*'])||'';return{p,w}})
+          .filter(({p,w})=>wcov(q,p.title)>=.99&&/\{\{\s*(infobox|info\/)\s*(film|television|tv|filme|televis)/i.test(w))
+          .map(({p,w})=>{const m=w.match(/\|\s*(?:image|imagem)\s*=\s*([^\n|]+)/i),f=m?m[1].replace(/<!--.*?-->/g,'').replace(/^\s*\[\[\s*/,'').replace(/^(file|image|ficheiro|imagem|arquivo)\s*:/i,'').replace(/\]\].*$/,'').trim():'';
+            const yr=y&&(p.title.includes(y)||new RegExp('releas\\w*\\s*=[^\\n]*\\b'+y+'\\b','i').test(w))?0:(y?10:0),ex=wtk(p.title).filter(x=>!qs.has(x)&&!/^(film|filme|tv|series|television|\d{4})$/.test(x)).length;
+            return{f,k:yr+ex*5+(p.index||0)}}).filter(x=>x.f).sort((a,b)=>a.k-b.k);
+        for(const x of c.slice(0,3)){const d2=await jf(api+'prop=imageinfo&iiprop=url&iiurlwidth=480&titles='+encodeURIComponent('File:'+x.f));
+          const pg=Object.values((d2.query&&d2.query.pages)||{})[0],ii=pg&&pg.imageinfo&&pg.imageinfo[0],u=ii&&(ii.thumburl||ii.url);if(u&&!/\.svg/i.test(u))return u}
+      }catch(e){err=1}}}
   if(err&&!done)throw new Error('wikipedia');return''}
 async function auto(k){const[t,q,y]=k.split('|');let u='',ok=0;
-  const ps=t==='t'?[()=>tvm(q),()=>imdb(q,y,t),()=>wk(q,y,t)]:[()=>imdb(q,y,t),()=>wk(q,y,t)];
+  const ps=t==='t'?[()=>tvm(q),()=>wk(q,y,t)]:[()=>wk(q,y,t)];
   for(const p of ps){try{u=await p();ok=1;if(u)break}catch(e){}}
   return u||(ok?'':null)}
 async function tm(path,q){const k=S.tmdb,h={};let u='https://api.themoviedb.org/3/'+path+'?'+q;
@@ -248,15 +249,18 @@ const cstat=()=>{const ks=[...new Set(allFiles().map(artKey))];return'capas '+ks
 const idle=()=>!cur&&!$('#cid');
 async function covers(force){if(cvB)return;if(force)for(const k in S.art)if(S.art[k].n||(S.tmdb&&S.art[k].u))delete S.art[k];
   const ks=[...new Set(allFiles().map(artKey))].filter(k=>!S.art[k]);coverMsg=cstat();if(!ks.length)return;cvB=true;
-  try{if(S.tmdb){for(let i=0;i<ks.length;i+=5){await Promise.all(ks.slice(i,i+5).map(cov));save()}}
-    else{const rest=[];
-      for(let i=0;i<ks.length;i+=4){await Promise.all(ks.slice(i,i+4).map(async k=>{const u=await auto(k);if(u)S.art[k]={u};else if(u==='')rest.push(k)}));save();coverMsg=cstat();if(idle())render2()}
-      for(let i=0;i<rest.length;i++){try{await itu(rest[i])}catch(e){}save();coverMsg=cstat();if(i%3===2&&idle())render2();await new Promise(r=>setTimeout(r,3200))}}}
+  try{if(S.tmdb){for(let i=0;i<ks.length;i+=10){await Promise.all(ks.slice(i,i+10).map(cov));save();coverMsg=cstat();if(idle())render2()}}
+    else{const q=ks.slice(),it=[],sl=ms=>new Promise(r=>setTimeout(r,ms));let fin=0,rt=0;
+      const rr=()=>{if(rt)return;rt=setTimeout(()=>{rt=0;save();coverMsg=cstat();if(idle())render2()},350)};
+      const pump=async()=>{while(q.length){const k=q.shift();let u=null;try{u=await auto(k)}catch(e){}if(u){S.art[k]={u};rr()}else if(u==='')it.push(k)}};
+      let last=0;const itw=async()=>{while(!fin||it.length){if(it.length){const w=last+3000-Date.now();if(w>0)await sl(w);const k=it.shift();try{await itu(k);rr()}catch(e){}last=Date.now()}else await sl(250)}};
+      await Promise.all([Promise.all(Array.from({length:8},pump)).then(()=>{fin=1}),itw()]);
+      clearTimeout(rt);rt=0;save()}}
   catch(e){coverMsg='erro nas capas: '+(e.message==='TMDB 401'?'chave TMDB inválida':e.message);toast(coverMsg)}
   cvB=false;if(!coverMsg.startsWith('erro'))coverMsg=cstat();if(idle())render2()}
 
 /* ---- UI pieces ---- */
-function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v10 · capas auto</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
+function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v12 · capas auto</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
 addEventListener('scroll',()=>$('#nv').classList.toggle('s',scrollY>40));
 function fcard(f,sub){return`<div class="c" tabindex="0" style="${hv(f.name)}" onclick="play('${f.id}')">${th(f)}${P(f.id).w?'<span class="bd">✓ VISTO</span>':''}<div class="act"><button title="Marcar visto/por ver" onclick="event.stopPropagation();mark('${f.id}')">✓</button><button title="Descarregar" onclick="event.stopPropagation();dl('${f.id}')">↓</button></div><div class="ct">${esc(title(f.name))}<small>${esc(sub||status(f.id))}</small></div><div class="pb"><i style="width:${pct(f.id)}%"></i></div></div>`}
 function scard(lib,name,eps){const w=eps.filter(e=>P(e.id).w).length,t=eps.find(e=>e.th)||eps[0];
