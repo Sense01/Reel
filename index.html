@@ -134,7 +134,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const enc=s=>encodeURIComponent(s).replace(/'/g,'%27');
 let S={};try{S=JSON.parse(localStorage.getItem('reel')||'{}')}catch(e){}
-S.cid??='';S.key??='';delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
+S.cid??='';S.key??='';S.tmdb??='';S.art??={};delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
 const save=()=>localStorage.setItem('reel',JSON.stringify(S));
 let V={lib:null,show:null,home:true,season:null};
 const toast=t=>{const m=$('#msg');m.textContent=t;m.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display='none',3500)};
@@ -169,7 +169,7 @@ const title=n=>n.replace(/\.[^.]+$/,'').replace(/[._]+/g,' ').trim();
 const se=n=>{const m=n.match(/s(\d{1,2})\s*e(\d{1,3})/i)||n.match(/(\d{1,2})x(\d{2,3})/i);return m?[+m[1],+m[2]]:[0,0]};
 const hue=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return h};
 const hv=s=>`--h1:hsl(${245+hue(s)%40} 28% 24%);--h2:hsl(250 18% 9%)`;
-const th=(f,w=640)=>f&&f.th?`<img loading="lazy" referrerpolicy="no-referrer" src="${esc(f.th.replace(/=s\d+$/,'=s'+w))}" onerror="this.remove()">`:'';
+const thOld=(f,w=640)=>f&&f.th?`<img loading="lazy" referrerpolicy="no-referrer" src="${esc(f.th.replace(/=s\d+$/,'=s'+w))}" onerror="this.remove()">`:'';
 const P=id=>S.prog[id]||{t:0,d:0,w:false};
 const pct=id=>{const p=P(id);return p.w?100:p.d?Math.min(100,p.t/p.d*100):0};
 const mmss=s=>{s=Math.floor(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
@@ -179,6 +179,28 @@ const byId=id=>allFiles().find(f=>f.id===id);
 const sortEps=a=>a.sort((x,y)=>{const p=se(x.name),q=se(y.name);return p[0]-q[0]||p[1]-q[1]||x.name.localeCompare(y.name)});
 const showsOf=lib=>{const o={};(S.cache[lib.id]||[]).forEach(f=>(o[f.show||'Outros']??=[]).push(f));Object.values(o).forEach(sortEps);return o};
 const nextUp=eps=>eps.find(e=>!P(e.id).w&&P(e.id).t>5)||eps.find(e=>!P(e.id).w)||eps[0];
+
+/* ---- capas (TMDB) ---- */
+const clean=n=>{const s=n.replace(/\.[^.]+$/,'').replace(/[._]+/g,' ').replace(/\[[^\]]*\]|\([^)]*\)/g,' ').replace(/\s+/g,' ').trim();
+  let i=s.slice(3).search(/\b((19|20)\d{2}|2160p|1080p|720p|480p|MULTi|VF[FI2]?|VOSTFR|TRUEFRENCH|FRENCH|WEB-?Rip|WEB-?DL|Blu-?Ray|BDRip|HDRip|DVDRip|HDTV|x26[45]|H26[45]|HEVC|S\d{1,2}E\d{1,3})\b/i);i=i<0?s.length:i+3;
+  return{t:s.slice(0,i).trim(),y:(s.slice(i).match(/^\W*((19|20)\d{2})\b/)||[])[1]||''}};
+const artKey=f=>{const l=S.libs.find(x=>x.id===f.lib),sr=l&&l.type==='series'&&f.show,c=clean(sr?f.show+'.x':f.name);return(sr?'t':'m')+'|'+c.t+'|'+(sr?'':c.y)};
+const th=(f,w=640,raw)=>{const a=!raw&&f&&S.art[artKey(f)],u=a&&(a.b||a.p);
+  return u?`<img loading="lazy" src="https://image.tmdb.org/t/p/${w>900?'w1280':'w780'}${u}" onerror="this.remove()">`:thOld(f,w)};
+async function tm(path,q){const k=S.tmdb,h={};let u='https://api.themoviedb.org/3/'+path+'?'+q;
+  if(k.length>40)h.Authorization='Bearer '+k;else u+='&api_key='+encodeURIComponent(k);
+  const r=await fetch(u,{headers:h});if(!r.ok)throw new Error('TMDB '+r.status);return(await r.json()).results||[]}
+async function cov(k){const[t,q,y]=k.split('|'),Q='query='+encodeURIComponent(q);
+  let r=await tm(t==='m'?'search/movie':'search/tv',Q+(y?(t==='m'?'&year=':'&first_air_date_year=')+y:''));
+  if(!r.length&&y)r=await tm('search/movie',Q);
+  if(!r.length)r=(await tm('search/multi',Q)).filter(x=>x.poster_path||x.backdrop_path);
+  const x=r.find(x=>x.backdrop_path||x.poster_path);S.art[k]=x?{b:x.backdrop_path||'',p:x.poster_path||''}:{n:1}}
+let cvB=false;
+async function covers(force){if(!S.tmdb||cvB)return;if(force)for(const k in S.art)if(S.art[k].n)delete S.art[k];
+  const ks=[...new Set(allFiles().map(artKey))].filter(k=>!S.art[k]);if(!ks.length)return;cvB=true;
+  try{for(let i=0;i<ks.length;i+=5){await Promise.all(ks.slice(i,i+5).map(cov));save()}}
+  catch(e){toast(e.message==='TMDB 401'?'Chave TMDB inválida':'Capas: '+e.message)}
+  cvB=false;if(!cur&&!$('#cid'))render2()}
 
 /* ---- UI pieces ---- */
 function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL</span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
@@ -208,7 +230,7 @@ function render(){nav();scrollTo(0,0);const m=$('#main');
    .replace('<p>',`<p>${s?`T${s}:E${n} · `:''}${eps.filter(e=>P(e.id).w).length}/${eps.length} vistos · `)+
    `<div class="rw" style="margin-top:-4vh"><span class="back" style="margin:0 4%" onclick="go('${lib.id}')">← ${esc(lib.name)}</span>
    <div class="tabs">${seasons.map(x=>`<button class="${x===V.season?'on':''}" onclick="V.season=${x};render2()">${x?'Temporada '+x:'Episódios'}</button>`).join('')}</div>
-   ${eps.filter(e=>se(e.name)[0]===V.season).map(e=>`<div class="ep" onclick="play('${e.id}')"><span class="n">${se(e.name)[1]||''}</span><div class="th" style="${hv(e.name)}">${th(e,400)}<div class="pb"><i style="width:${pct(e.id)}%"></i></div></div><div class="tx"><b>${esc(title(e.name))}</b><span>${status(e.id)}</span></div><div class="ab"><button onclick="event.stopPropagation();dl('${e.id}')">Descarregar</button><button onclick="event.stopPropagation();mark('${e.id}')">${P(e.id).w?'Por ver':'Marcar visto'}</button></div></div>`).join('')}</div>`}
+   ${eps.filter(e=>se(e.name)[0]===V.season).map(e=>`<div class="ep" onclick="play('${e.id}')"><span class="n">${se(e.name)[1]||''}</span><div class="th" style="${hv(e.name)}">${th(e,400,1)}<div class="pb"><i style="width:${pct(e.id)}%"></i></div></div><div class="tx"><b>${esc(title(e.name))}</b><span>${status(e.id)}</span></div><div class="ab"><button onclick="event.stopPropagation();dl('${e.id}')">Descarregar</button><button onclick="event.stopPropagation();mark('${e.id}')">${P(e.id).w?'Por ver':'Marcar visto'}</button></div></div>`).join('')}</div>`}
 function render2(){const y=scrollY;render();scrollTo(0,y)}
 function home(m){
   const cont=Object.entries(S.prog).filter(([id,p])=>!p.w&&p.t>5&&byId(id)).sort((a,b)=>b[1].at-a[1].at).map(x=>byId(x[0]));
@@ -224,7 +246,8 @@ function settings(){$('#main').innerHTML=`<div class="pg" style="padding-top:120
   <div class="box"><ol><li>Na <b>Google Cloud Console</b>, ativa a <b>Google Drive API</b>.</li><li>Em <i>Ecrã de consentimento OAuth</i>, escolhe <i>Externo</i> e adiciona o teu email em <b>Utilizadores de teste</b>.</li><li>Em <i>Credenciais</i>, cria um <b>ID de cliente OAuth</b> (<i>Aplicação Web</i>) e em <i>Origens JavaScript autorizadas</i> junta exatamente: <code>${location.origin}</code></li><li>Cola o Client ID abaixo.</li></ol>
   <label>Client ID OAuth<input id="cid" value="${esc(S.cid)}" placeholder="123456-abc.apps.googleusercontent.com"></label>
   <details style="margin-bottom:16px;color:var(--mut)"><summary style="cursor:pointer">Alternativa: API key (só pastas públicas)</summary><label>API key<input id="key" value="${esc(S.key)}" placeholder="AIzaSy…"></label></details>
-  <button class="pri" onclick="S.cid=$('#cid').value.trim();S.key=S.cid?'':($('#key').value.trim());save();if(S.cid)auth().then(()=>{toast('Ligado ao Drive');go()}).catch(e=>toast(e.message));else if(S.key){toast('API key guardada');go()}else toast('Cola o Client ID')">Guardar e ligar</button></div></div>`}
+  <button class="pri" onclick="S.cid=$('#cid').value.trim();S.key=S.cid?'':($('#key').value.trim());save();if(S.cid)auth().then(()=>{toast('Ligado ao Drive');go()}).catch(e=>toast(e.message));else if(S.key){toast('API key guardada');go()}else toast('Cola o Client ID')">Guardar e ligar</button></div>
+  <div class="box" style="margin-top:18px"><b>Capas dos filmes e séries</b><p style="color:var(--mut)">Opcional. Cria uma conta gratuita em themoviedb.org, vai a Definições › API e cola aqui a chave (API Key ou Read Access Token). O REEL procura o nome de cada filme ou série e põe a capa.</p><label>Chave TMDB<input id="tm" value="${esc(S.tmdb)}" placeholder="a tua chave"></label><button class="pri" onclick="S.tmdb=$('#tm').value.trim();save();toast(S.tmdb?'Chave guardada. A procurar capas…':'Chave removida');covers(true)">Guardar chave</button></div></div>`}
 
 /* ---- libraries ---- */
 let stack=[];
@@ -241,7 +264,7 @@ $('#mk').onclick=async()=>{let fid,nm;const raw=$('#fid').value.trim();
   const lib={id:'l'+Date.now(),name:$('#ln').value.trim()||nm,type:$('#lt').value,folder:fid};
   S.libs.push(lib);save();$('#m1').classList.remove('on');await rescan(lib.id)};
 async function rescan(id){const lib=S.libs.find(l=>l.id===id);toast('A analisar o Drive…');
-  try{await scan(lib);toast(S.cache[id].length+' vídeos encontrados')}catch(e){toast(e.message)}V={lib:id,show:null,home:false,season:null};render()}
+  try{await scan(lib);toast(S.cache[id].length+' vídeos encontrados')}catch(e){toast(e.message)}V={lib:id,show:null,home:false,season:null};render();covers()}
 function delLib(id){if(!confirm('Remover esta biblioteca? Os ficheiros no Drive não são tocados.'))return;S.libs=S.libs.filter(l=>l.id!==id);delete S.cache[id];save();go()}
 function go(l=null,s=null){V={lib:l,show:s,home:!l,season:null};render()}
 function mark(id){const p=S.prog[id]=P(id);p.w=!p.w;if(!p.w)p.t=0;p.at=Date.now();save();render2()}
@@ -260,9 +283,15 @@ const eh=(b,p)=>{const a=rv(b,p,1);if(!a)return null;const s=rv(b,p+a[1]);if(!s)
 const kids=(b,s,e,f)=>{let p=s;while(p<e){const h=eh(b,p);if(!h)break;const a=p+h.hl,z=h.sz<0?e:Math.min(e,a+h.sz);f(h.id,a,z);p=z}};
 const uint=(b,s,e)=>{let v=0;for(;s<e;s++)v=v*256+b[s];return v};
 const flt=(b,s,e)=>{const d=new DataView(b.buffer,b.byteOffset+s,e-s);return e-s===4?d.getFloat32(0):d.getFloat64(0)};
-function blocks(b,s,e,tcs,out){let tc=0;
-  const blk=(s,e,key)=>{const a=rv(b,s,0);if(!a)return;const o=s+a[1],rel=((b[o]<<8|b[o+1])<<16)>>16;
-    out.push({tr:a[0],ts:(tc+rel)*tcs/1e6,key:key??!!(b[o+2]&128),d:b.subarray(o+3,e)})};
+function blocks(b,s,e,tcs,out,dd){let tc=0;
+  const blk=(s,e,key)=>{const a=rv(b,s,0);if(!a)return;const o=s+a[1],rel=((b[o]<<8|b[o+1])<<16)>>16,fl=b[o+2],ts=(tc+rel)*tcs/1e6,lc=fl>>1&3,k=key??!!(fl&128);let q=o+3;
+    if(!lc){out.push({tr:a[0],ts,key:k,d:b.subarray(q,e)});return}
+    const n=b[q++]+1,z=[];
+    if(lc===1){for(let i=0;i<n-1;i++){let x=0,c;do{c=b[q++];x+=c}while(c===255);z.push(x)}}
+    else if(lc===2){let r=rv(b,q,0);z.push(r[0]);q+=r[1];for(let i=1;i<n-1;i++){r=rv(b,q,0);q+=r[1];z.push(z[i-1]+r[0]-(2**(7*r[1]-1)-1))}}
+    else{const x=Math.floor((e-q)/n);for(let i=0;i<n-1;i++)z.push(x)}
+    z.push(e-q-z.reduce((x,y)=>x+y,0));const du=dd[a[0]]||32;
+    z.forEach((x,i)=>{out.push({tr:a[0],ts:ts+i*du,key:k,d:b.subarray(q,q+x)});q+=x})};
   kids(b,s,e,(id,s,e)=>{if(id===0xE7)tc=uint(b,s,e);else if(id===0xA3)blk(s,e);
     else if(id===0xA0){let k=true,bs,be;kids(b,s,e,(i,s2,e2)=>{if(i===0xA1){bs=s2;be=e2}else if(i===0xFB)k=false});if(bs!==undefined)blk(bs,be,k)}})}
 /* MP4 */
@@ -299,12 +328,13 @@ async function start(f,v,t0){stop();
     else if(h.id===0x114D9B74)kids(b,s,e,(i,s2,e2)=>{if(i===0x4DBB){let id,ps;kids(b,s2,e2,(j,s3,e3)=>{if(j===0x53AB)id=uint(b,s3,e3);else if(j===0x53AC)ps=uint(b,s3,e3)});if(id===0x1C53BB6B)cuesAt=seg+ps}});
     else if(h.id===0x1654AE6B)kids(b,s,e,(i,s2,e2)=>{if(i!==0xAE)return;const t={};kids(b,s2,e2,(j,s3,e3)=>{
       if(j===0xD7)t.n=uint(b,s3,e3);else if(j===0x83)t.type=uint(b,s3,e3);else if(j===0x86)t.codec=String.fromCharCode(...b.subarray(s3,e3));
-      else if(j===0x63A2)t.cp=b.slice(s3,e3);else if(j===0x23E383)t.dd=uint(b,s3,e3)/1e6;
+      else if(j===0x63A2)t.cp=b.slice(s3,e3);else if(j===0x6D80)kids(b,s3,e3,(k,s4,e4)=>{if(k===0x6240)kids(b,s4,e4,(l,s5,e5)=>{if(l===0x5034)kids(b,s5,e5,(m,s6,e6)=>{if(m===0x4254)t.ca=uint(b,s6,e6);else if(m===0x4255)t.cs=b.slice(s6,e6)})})});else if(j===0x23E383)t.dd=uint(b,s3,e3)/1e6;
       else if(j===0xE0)kids(b,s3,e3,(k,s4,e4)=>{if(k===0xB0)t.W=uint(b,s4,e4);else if(k===0xBA)t.H=uint(b,s4,e4)});
       else if(j===0xE1)kids(b,s3,e3,(k,s4,e4)=>{if(k===0xB5)t.sr=flt(b,s4,e4);else if(k===0x9F)t.ch=uint(b,s4,e4)})});T.push(t)});
     p=s+h.sz}
   if(clus1<0)throw new Error('cabeçalho MKV demasiado grande');
-  const vt=T.find(t=>t.type===1),at=T.find(t=>t.type===2);
+  const vt=T.find(t=>t.type===1),at=T.find(t=>t.type===2&&/^A_(EAC3|AAC)/.test(t.codec))||T.find(t=>t.type===2),dd={};T.forEach(t=>{if(t.dd)dd[t.n]=t.dd;if(t.ca===3&&t.cs)t.strip=t.cs});
+  if([vt,at].some(t=>t&&t.ca===0))throw new Error('pista comprimida (zlib), não suportado');
   if(!vt||vt.codec!=='V_MPEG4/ISO/AVC'||!vt.cp)throw new Error('vídeo não é H.264');
   if(!at||!/^A_(EAC3|AAC)/.test(at.codec))throw new Error('áudio '+(at?at.codec:'?')+' não suportado');
   const eac=at.codec==='A_EAC3',fdur=vt.dd||1000/23.976,D=Math.round(4*fdur);
@@ -325,9 +355,9 @@ async function start(f,v,t0){stop();
   const ahead=()=>{const r=v.buffered,t=v.currentTime;for(let i=0;i<r.length;i++)if(r.start(i)<=t+.5&&r.end(i)>=t)return r.end(i)-t;return 0};
   const trim=async()=>{const c=v.currentTime-60;if(c>10)for(const s of[vsb,asb])if(s.buffered.length&&s.buffered.start(0)<c-5)await rm(s,0,c)};
   const emit=async(pm,out,vs,as)=>{if(pm.dead)return;
-    const V=out.filter(x=>x.tr===vt.n),A=out.filter(x=>x.tr===at.n);
+    const fx=(x,t)=>t.strip?{...x,d:cat(t.strip,x.d)}:x,V=out.filter(x=>x.tr===vt.n).map(x=>fx(x,vt)),A=out.filter(x=>x.tr===at.n).map(x=>fx(x,at));
     if(!g.ini){if(!A.length)return;let ent;
-      if(eac){const d=A[0].d;if(d[0]!==0x0B||d[1]!==0x77)throw new Error('áudio não é E-AC-3');
+      if(eac){const d=A[0].d;if(d[0]!==0x0B||d[1]!==0x77)throw new Error('áudio não é E-AC-3 (bytes: '+[...d.slice(0,8)].map(x=>x.toString(16).padStart(2,'0')).join(' ')+', pistas: '+T.map(t=>t.type+':'+t.codec).join(' ')+')');
         const fs=[48000,44100,32000][d[4]>>6]||48000,nb=[1,2,3,6][d[4]>>4&3],kb=Math.round((((d[2]&7)<<8|d[3])+1)*16*fs/(nb*256)/1000);
         ent=aud('ec-3',at.ch||6,fs,box('dec3',i16(kb<<3),new U([d[4]>>6<<6|d[5]>>3<<1,(d[4]>>1&7)<<1|d[4]&1,0])))}
       else ent=aud('mp4a',at.ch||2,at.sr||48000,fb('esds',0,0,dsc(3,i16(0),new U([0]),dsc(4,new U([0x40,0x15,0,0,0]),i32(0),i32(0),dsc(5,at.cp)),dsc(6,new U([2])))));
@@ -346,7 +376,7 @@ async function start(f,v,t0){stop();
       while(!pm.dead&&ahead()>40)await new Promise(r=>setTimeout(r,400));
       await need(p+16);if(pm.dead)return;
       const h=eh(buf,p-bo);if(!h||h.sz<0)break;const tot=h.hl+h.sz;
-      if(h.id===CL){await need(p+tot);if(pm.dead)return;const out=[];blocks(buf,p-bo+h.hl,p-bo+tot,tcs,out);await emit(pm,out,vs,as)}
+      if(h.id===CL){await need(p+tot);if(pm.dead)return;const out=[];blocks(buf,p-bo+h.hl,p-bo+tot,tcs,out,dd);await emit(pm,out,vs,as)}
       p+=tot;if(p>=bo+buf.length){buf=new U(0);bo=p}else{buf=buf.subarray(p-bo);bo=p}}
     if(!pm.dead&&ms.readyState==='open')ms.endOfStream()};
   const spawn=pos=>{const pm={dead:false};pm.done=run(pm,pos).catch(e=>{if(pm.dead)return;console.error(e);g.no(e);toast('Remux: '+e.message)});return pm};
@@ -427,7 +457,7 @@ addEventListener('keydown',e=>{if(e.key==='Escape'&&cur)closePlayer()});
 (()=>{const el=$('#intro');if(!el)return;try{sessionStorage.setItem('reelIntro','1')}catch(e){}
   const end=()=>{el.classList.add('out');setTimeout(()=>el.remove(),900)};const t=setTimeout(end,3000);el.onclick=()=>{clearTimeout(t);end()}})();
 if(canSW())navigator.serviceWorker.register('sw.js').catch(()=>{});
-render();
+render();covers();
 </script>
 </body>
 </html>
