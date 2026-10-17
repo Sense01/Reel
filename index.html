@@ -246,6 +246,117 @@ function delLib(id){if(!confirm('Remover esta biblioteca? Os ficheiros no Drive 
 function go(l=null,s=null){V={lib:l,show:s,home:!l,season:null};render()}
 function mark(id){const p=S.prog[id]=P(id);p.w=!p.w;if(!p.w)p.t=0;p.at=Date.now();save();render2()}
 
+/* ---- MKV → MP4 fragmentado em tempo real (remux no browser, sem recodificar) ---- */
+const MKV=(()=>{
+const U=Uint8Array,CL=0x1F43B675,CH=6<<20,MX=null;
+const cat=(...a)=>{const o=new U(a.reduce((s,x)=>s+x.length,0));let p=0;for(const x of a){o.set(x,p);p+=x.length}return o};
+const i32=n=>new U([n>>>24,n>>>16&255,n>>>8&255,n&255]),i16=n=>new U([n>>8&255,n&255]),st=s=>new U([...s].map(c=>c.charCodeAt(0)));
+const box=(t,...c)=>{const d=cat(...c);return cat(i32(8+d.length),st(t),d)};
+const fb=(t,v,fl,...c)=>box(t,new U([v,fl>>16,fl>>8&255,fl&255]),...c);
+const MAT=cat(i32(65536),i32(0),i32(0),i32(0),i32(65536),i32(0),i32(0),i32(0),i32(0x40000000));
+/* EBML */
+function rv(b,p,id){const c=b[p];if(!c)return null;let n=1;while(!(c>>(8-n)&1))n++;if(p+n>b.length)return null;let v=id?c:c&(255>>n);for(let i=1;i<n;i++)v=v*256+b[p+i];if(!id&&v===2**(7*n)-1)v=-1;return[v,n]}
+const eh=(b,p)=>{const a=rv(b,p,1);if(!a)return null;const s=rv(b,p+a[1]);if(!s)return null;return{id:a[0],sz:s[0],hl:a[1]+s[1]}};
+const kids=(b,s,e,f)=>{let p=s;while(p<e){const h=eh(b,p);if(!h)break;const a=p+h.hl,z=h.sz<0?e:Math.min(e,a+h.sz);f(h.id,a,z);p=z}};
+const uint=(b,s,e)=>{let v=0;for(;s<e;s++)v=v*256+b[s];return v};
+const flt=(b,s,e)=>{const d=new DataView(b.buffer,b.byteOffset+s,e-s);return e-s===4?d.getFloat32(0):d.getFloat64(0)};
+function blocks(b,s,e,tcs,out){let tc=0;
+  const blk=(s,e,key)=>{const a=rv(b,s,0);if(!a)return;const o=s+a[1],rel=((b[o]<<8|b[o+1])<<16)>>16;
+    out.push({tr:a[0],ts:(tc+rel)*tcs/1e6,key:key??!!(b[o+2]&128),d:b.subarray(o+3,e)})};
+  kids(b,s,e,(id,s,e)=>{if(id===0xE7)tc=uint(b,s,e);else if(id===0xA3)blk(s,e);
+    else if(id===0xA0){let k=true,bs,be;kids(b,s,e,(i,s2,e2)=>{if(i===0xA1){bs=s2;be=e2}else if(i===0xFB)k=false});if(bs!==undefined)blk(bs,be,k)}})}
+/* MP4 */
+const init=(vid,ent,W,H)=>cat(box('ftyp',st('isom'),i32(512),st('isomiso6avc1')),box('moov',
+  fb('mvhd',0,0,i32(0),i32(0),i32(1000),i32(0),i32(65536),i16(256),new U(10),MAT,new U(24),i32(2)),
+  box('trak',fb('tkhd',0,3,i32(0),i32(0),i32(1),i32(0),i32(0),new U(8),i16(0),i16(0),i16(vid?0:256),i16(0),MAT,i32(vid?W<<16:0),i32(vid?H<<16:0)),
+   box('mdia',fb('mdhd',0,0,i32(0),i32(0),i32(1000),i32(0),i16(0x55c4),i16(0)),fb('hdlr',0,0,i32(0),st(vid?'vide':'soun'),new U(12),new U([82,69,69,76,0])),
+    box('minf',vid?fb('vmhd',0,1,new U(8)):fb('smhd',0,0,new U(4)),box('dinf',fb('dref',0,0,i32(1),fb('url ',0,1))),
+     box('stbl',fb('stsd',0,0,i32(1),ent),fb('stts',0,0,i32(0)),fb('stsc',0,0,i32(0)),fb('stsz',0,0,i32(0),i32(0)),fb('stco',0,0,i32(0)))))),
+  box('mvex',fb('trex',0,0,i32(1),i32(1),i32(0),i32(0),i32(0)))));
+const aud=(tag,ch,sr,ext)=>box(tag,new U(6),i16(1),new U(8),i16(ch),i16(16),i16(0),i16(0),i32(sr*65536),ext);
+const dsc=(t,...c)=>{const x=cat(...c);return cat(new U([t,x.length]),x)};
+let seq=0;
+const frag=(S,base,vid)=>{const mk=off=>box('moof',fb('mfhd',0,0,i32(++seq)),box('traf',fb('tfhd',0,0x20000,i32(1)),fb('tfdt',1,0,i32(0),i32(base)),
+    fb('trun',1,vid?0xF01:0x301,i32(S.length),i32(off),...S.map(s=>cat(i32(s.d),i32(s.sz),...(vid?[i32(s.fl),i32(s.c)]:[]))))));
+  const m0=mk(0),m=mk(m0.length+8);return cat(m,box('mdat',...S.map(s=>s.data)))};
+/* sessão */
+let G=null;
+const ok=()=>!!(window.MediaSource||window.ManagedMediaSource);
+async function rng(f,a,b){if(a>=f.size)return new U(0);
+  const u='https://www.googleapis.com/drive/v3/files/'+f.id+'?alt=media&supportsAllDrives=true'+(S.key?'&key='+encodeURIComponent(S.key):'');
+  const h={Range:`bytes=${a}-${b}`};if(!S.key)h.Authorization='Bearer '+await auth();
+  const r=await fetch(u,{headers:h});if(!r.ok)throw new Error('Drive '+r.status);return new U(await r.arrayBuffer())}
+function stop(){if(!G)return;G.dead=true;if(G.pump)G.pump.dead=true;try{URL.revokeObjectURL(G.url)}catch(e){}G=null}
+async function start(f,v,t0){stop();
+  const MS=window.MediaSource||window.ManagedMediaSource,g=G={dead:false,sk:0,rst:true,ini:null};
+  const first=new Promise((ok,no)=>{g.ok=ok;g.no=no});
+  /* cabeçalho */
+  const b=await rng(f,0,2*2**20-1);let p=0;const e0=eh(b,0);if(!e0||e0.id!==0x1A45DFA3)throw new Error('não é Matroska');
+  p=e0.hl+e0.sz;const sg=eh(b,p);if(!sg||sg.id!==0x18538067)throw new Error('segmento não encontrado');
+  const seg=p+sg.hl;p=seg;let tcs=1e6,dur=0,cuesAt=-1,clus1=-1;const T=[];
+  while(p<b.length){const h=eh(b,p);if(!h)break;if(h.id===CL){clus1=p;break}const s=p+h.hl,e=Math.min(b.length,s+h.sz);
+    if(h.id===0x1549A966)kids(b,s,e,(i,s2,e2)=>{if(i===0x2AD7B1)tcs=uint(b,s2,e2);else if(i===0x4489)dur=flt(b,s2,e2)});
+    else if(h.id===0x114D9B74)kids(b,s,e,(i,s2,e2)=>{if(i===0x4DBB){let id,ps;kids(b,s2,e2,(j,s3,e3)=>{if(j===0x53AB)id=uint(b,s3,e3);else if(j===0x53AC)ps=uint(b,s3,e3)});if(id===0x1C53BB6B)cuesAt=seg+ps}});
+    else if(h.id===0x1654AE6B)kids(b,s,e,(i,s2,e2)=>{if(i!==0xAE)return;const t={};kids(b,s2,e2,(j,s3,e3)=>{
+      if(j===0xD7)t.n=uint(b,s3,e3);else if(j===0x83)t.type=uint(b,s3,e3);else if(j===0x86)t.codec=String.fromCharCode(...b.subarray(s3,e3));
+      else if(j===0x63A2)t.cp=b.slice(s3,e3);else if(j===0x23E383)t.dd=uint(b,s3,e3)/1e6;
+      else if(j===0xE0)kids(b,s3,e3,(k,s4,e4)=>{if(k===0xB0)t.W=uint(b,s4,e4);else if(k===0xBA)t.H=uint(b,s4,e4)});
+      else if(j===0xE1)kids(b,s3,e3,(k,s4,e4)=>{if(k===0xB5)t.sr=flt(b,s4,e4);else if(k===0x9F)t.ch=uint(b,s4,e4)})});T.push(t)});
+    p=s+h.sz}
+  if(clus1<0)throw new Error('cabeçalho MKV demasiado grande');
+  const vt=T.find(t=>t.type===1),at=T.find(t=>t.type===2);
+  if(!vt||vt.codec!=='V_MPEG4/ISO/AVC'||!vt.cp)throw new Error('vídeo não é H.264');
+  if(!at||!/^A_(EAC3|AAC)/.test(at.codec))throw new Error('áudio '+(at?at.codec:'?')+' não suportado');
+  const eac=at.codec==='A_EAC3',fdur=vt.dd||1000/23.976,D=Math.round(4*fdur);
+  const vm=`video/mp4; codecs="avc1.${[1,2,3].map(i=>vt.cp[i].toString(16).padStart(2,'0')).join('')}"`,am=eac?'audio/mp4; codecs="ec-3"':'audio/mp4; codecs="mp4a.40.2"';
+  if(!MS.isTypeSupported(vm)||!MS.isTypeSupported(am))throw new Error('o browser não suporta '+(MS.isTypeSupported(vm)?am:vm));
+  /* cues (para saltar no tempo) */
+  let cues=[];if(cuesAt>0){try{const h=eh(await rng(f,cuesAt,cuesAt+15),0),d=await rng(f,cuesAt,cuesAt+h.hl+h.sz-1);
+    kids(d,h.hl,d.length,(id,s,e)=>{if(id!==0xBB)return;let t,c;kids(d,s,e,(i,s2,e2)=>{if(i===0xB3)t=uint(d,s2,e2);else if(i===0xB7)kids(d,s2,e2,(j,s3,e3)=>{if(j===0xF1&&c===undefined)c=uint(d,s3,e3)})});if(c!==undefined)cues.push([t*tcs/1e6,c])})}catch(e){console.warn('cues',e)}}
+  const posFor=t=>{let c=null;for(const q of cues){if(q[0]<=t*1000)c=q;else break}return c?seg+c[1]:clus1};
+  /* MSE */
+  v.disableRemotePlayback=true;const ms=new MS();g.url=URL.createObjectURL(ms);v.src=g.url;
+  await new Promise(r=>ms.addEventListener('sourceopen',r,{once:true}));if(g.dead)return;
+  ms.duration=(dur*tcs/1e9)||7200;
+  const vsb=ms.addSourceBuffer(vm),asb=ms.addSourceBuffer(am);vsb.timestampOffset=-D/1000;
+  const app=(s,d)=>new Promise((res,rej)=>{s.onupdateend=res;s.onerror=()=>rej(new Error('append MSE'));s.appendBuffer(d)});
+  const rm=(s,a,z)=>new Promise(res=>{s.onupdateend=res;s.remove(a,z)});
+  const clr=async s=>{try{s.abort()}catch(e){}await rm(s,0,1e9)};
+  const ahead=()=>{const r=v.buffered,t=v.currentTime;for(let i=0;i<r.length;i++)if(r.start(i)<=t+.5&&r.end(i)>=t)return r.end(i)-t;return 0};
+  const trim=async()=>{const c=v.currentTime-60;if(c>10)for(const s of[vsb,asb])if(s.buffered.length&&s.buffered.start(0)<c-5)await rm(s,0,c)};
+  const emit=async(pm,out,vs,as)=>{if(pm.dead)return;
+    const V=out.filter(x=>x.tr===vt.n),A=out.filter(x=>x.tr===at.n);
+    if(!g.ini){if(!A.length)return;let ent;
+      if(eac){const d=A[0].d;if(d[0]!==0x0B||d[1]!==0x77)throw new Error('áudio não é E-AC-3');
+        const fs=[48000,44100,32000][d[4]>>6]||48000,nb=[1,2,3,6][d[4]>>4&3],kb=Math.round((((d[2]&7)<<8|d[3])+1)*16*fs/(nb*256)/1000);
+        ent=aud('ec-3',at.ch||6,fs,box('dec3',i16(kb<<3),new U([d[4]>>6<<6|d[5]>>3<<1,(d[4]>>1&7)<<1|d[4]&1,0])))}
+      else ent=aud('mp4a',at.ch||2,at.sr||48000,fb('esds',0,0,dsc(3,i16(0),new U([0]),dsc(4,new U([0x40,0x15,0,0,0]),i32(0),i32(0),dsc(5,at.cp)),dsc(6,new U([2])))));
+      g.ini={v:init(1,box('avc1',new U(6),i16(1),new U(16),i16(vt.W),i16(vt.H),i32(0x480000),i32(0x480000),i32(0),i16(1),new U(32),i16(24),i16(-1),box('avcC',vt.cp)),vt.W,vt.H),a:init(0,ent)}}
+    if(g.rst){await app(vsb,g.ini.v);await app(asb,g.ini.a);g.rst=false}
+    await trim();if(pm.dead)return;
+    if(V.length){if(vs.t0===null)vs.t0=V[0].ts;const k0=vs.n,dR=k=>Math.round(vs.t0+k*fdur);
+      const S=V.map((x,i)=>({d:dR(k0+i+1)-dR(k0+i),sz:x.d.length,fl:x.key?0x2000000:0x1010000,c:Math.max(0,Math.round(x.ts-(vs.t0+(k0+i)*fdur)+D)),data:x.d}));
+      vs.n+=V.length;await app(vsb,frag(S,dR(k0),1))}
+    if(A.length){const q=A.map(x=>Math.round(x.ts)),S=A.map((x,i)=>({d:i<q.length-1?q[i+1]-q[i]:(as.d||32),sz:x.d.length,data:x.d}));
+      if(S.length>1)as.d=S[S.length-2].d;await app(asb,frag(S,q[0],0))}
+    g.ok()};
+  const run=async(pm,from)=>{let buf=new U(0),bo=from,p=from,eof=false;const vs={n:0,t0:null},as={};
+    const need=async e=>{while(bo+buf.length<e&&!eof&&!pm.dead){const a=bo+buf.length;if(a>=f.size){eof=true;break}buf=cat(buf,await rng(f,a,Math.min(a+CH,f.size)-1))}};
+    while(!pm.dead){
+      while(!pm.dead&&ahead()>40)await new Promise(r=>setTimeout(r,400));
+      await need(p+16);if(pm.dead)return;
+      const h=eh(buf,p-bo);if(!h||h.sz<0)break;const tot=h.hl+h.sz;
+      if(h.id===CL){await need(p+tot);if(pm.dead)return;const out=[];blocks(buf,p-bo+h.hl,p-bo+tot,tcs,out);await emit(pm,out,vs,as)}
+      p+=tot;if(p>=bo+buf.length){buf=new U(0);bo=p}else{buf=buf.subarray(p-bo);bo=p}}
+    if(!pm.dead&&ms.readyState==='open')ms.endOfStream()};
+  const spawn=pos=>{const pm={dead:false};pm.done=run(pm,pos).catch(e=>{if(pm.dead)return;console.error(e);g.no(e);toast('Remux: '+e.message)});return pm};
+  const reseek=async t=>{const my=++g.sk;g.pump.dead=true;await g.pump.done;if(g.dead||my!==g.sk)return;
+    await clr(vsb);await clr(asb);g.rst=true;g.pump=spawn(posFor(t))};
+  g.pump=spawn(posFor(t0));await first;if(g.dead)return;
+  if(t0>0)v.currentTime=t0;
+  v.onseeking=()=>{const t=v.currentTime,r=v.buffered;for(let i=0;i<r.length;i++)if(r.start(i)<=t&&r.end(i)>t+1)return;reseek(t)}}
+return{ok,start,stop}})();
+
 /* ---- download + play ---- */
 async function blobOf(f,tag){const r=await api(`files/${f.id}?alt=media`);const rd=r.body.getReader(),ch=[];let got=0;
   for(;;){const{done,value}=await rd.read();if(done)break;ch.push(value);got+=value.length;
@@ -257,12 +368,15 @@ async function dl(id){const f=byId(id);
   toast('A descarregar '+title(f.name)+'… (pode demorar)');
   try{const b=await blobOf(f,'A descarregar');const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f.name;a.click();toast('Download concluído')}catch(e){toast(e.message)}}
 let cur=null,lastSave=0,nxt=null;
-async function play(id){const f=byId(id);cur=f;const v=$('#vid');v.style.display='none';v.removeAttribute('src');
+async function play(id){const f=byId(id);MKV.stop();cur=f;const v=$('#vid');v.style.display='none';v.removeAttribute('src');
   const lib=S.libs.find(l=>l.id===f.lib),eps=lib&&lib.type==='series'&&f.show?showsOf(lib)[f.show]:[];
   nxt=eps[eps.findIndex(e=>e.id===id)+1]||null;$('#nx').style.display=nxt?'block':'none';
   $('#pt').textContent=(f.show?f.show+' · ':'')+title(f.name);$('#ifr')?.remove();$('#ld').style.pointerEvents='none';$('#ld').style.display='flex';$('#ld').textContent='A carregar…';$('#pl').classList.add('on');
-  try{let src;if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}const p=P(id);
-    v.src=src;$('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none'};setTimeout(()=>{if(cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
+  try{const p=P(id);let src,mkv=false;
+    if(/\.mkv$/i.test(f.name)&&MKV.ok()){try{$('#ld').textContent='A preparar o MKV…';await MKV.start(f,v,!p.w&&p.t>5?p.t:0);mkv=true}catch(e){console.warn('MKV',e);toast('Remux MKV falhou: '+e.message+'. A usar o método antigo.')}if(cur!==f)return}
+    if(!mkv){if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}v.src=src}
+    if(mkv)v.play().catch(()=>{});
+    $('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none'};setTimeout(()=>{if(cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
     v.onloadedmetadata=()=>{if(!p.w&&p.t>5&&p.t<v.duration-10)v.currentTime=p.t;v.play().catch(()=>{})};
     v.onerror=async()=>{v.style.display='none';const ce=v.error?v.error.code:0;let why='O browser não conseguiu reproduzir este ficheiro.',mk=false;
       try{const ac=new AbortController();const r=await fetch(direct(f),{signal:ac.signal});
@@ -307,7 +421,7 @@ function askStop(){if(!cur)return;const p=S.prog[cur.id]=P(cur.id),el=Math.round
 function nextEp(){persist();if(nxt)play(nxt.id)}
 function persist(){const v=$('#vid');if(!cur||!v.duration)return;lastSave=Date.now();
   const p=S.prog[cur.id]=P(cur.id);p.t=v.currentTime;p.d=v.duration;p.at=Date.now();if(p.t/p.d>.92)p.w=true;save()}
-function closePlayer(){const emb=!!$('#ifr');if(emb)askStop();else persist();$('#ifr')?.remove();const v=$('#vid');v.pause();v.removeAttribute('src');cur=null;$('#pl').classList.remove('on');render2()}
+function closePlayer(){MKV.stop();const emb=!!$('#ifr');if(emb)askStop();else persist();$('#ifr')?.remove();const v=$('#vid');v.pause();v.removeAttribute('src');cur=null;$('#pl').classList.remove('on');render2()}
 addEventListener('keydown',e=>{if(e.key==='Escape'&&cur)closePlayer()});
 
 (()=>{const el=$('#intro');if(!el)return;try{sessionStorage.setItem('reelIntro','1')}catch(e){}
