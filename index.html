@@ -181,7 +181,7 @@ function auth(){return new Promise((res,rej)=>{
   if(tok&&Date.now()<exp)return res(tok);
   if(!window.google)return rej(new Error('Script da Google não carregou'));
   google.accounts.oauth2.initTokenClient({client_id:S.cid,scope:'https://www.googleapis.com/auth/drive.readonly',
-    callback:r=>{if(r.error)return rej(new Error(r.error));tok=r.access_token;exp=Date.now()+(r.expires_in-60)*1000;res(tok)}}).requestAccessToken()})}
+    error_callback:e=>rej(new Error('Login Google: '+((e&&e.type)||'popup bloqueado'))),callback:r=>{if(r.error)return rej(new Error(r.error));tok=r.access_token;exp=Date.now()+(r.expires_in-60)*1000;res(tok)}}).requestAccessToken()})}
 const mediaUrl=id=>`https://www.googleapis.com/drive/v3/files/${id}?alt=media&key=${encodeURIComponent(S.key)}`;
 async function api(p){let r;const u='https://www.googleapis.com/drive/v3/'+p;
   if(S.key)r=await fetch(u+(p.includes('?')?'&':'?')+'key='+encodeURIComponent(S.key));
@@ -423,7 +423,7 @@ async function start(f,v,t0,pref,hk={}){stop();
   const MS=window.MediaSource||window.ManagedMediaSource,g=G={dead:false,sk:0,rst:true,ini:null};
   const first=new Promise((ok,no)=>{g.ok=ok;g.no=no});
   /* cabeçalho */
-  const b=await rng(f,0,2*2**20-1);let p=0;const e0=eh(b,0);if(!e0||e0.id!==0x1A45DFA3)throw new Error('não é Matroska');
+  hk.st&&hk.st('A ligar ao Drive…');const b=await rng(f,0,2*2**20-1);hk.st&&hk.st('A ler as pistas do MKV…');let p=0;const e0=eh(b,0);if(!e0||e0.id!==0x1A45DFA3)throw new Error('não é Matroska');
   p=e0.hl+e0.sz;const sg=eh(b,p);if(!sg||sg.id!==0x18538067)throw new Error('segmento não encontrado');
   const seg=p+sg.hl;p=seg;let tcs=1e6,dur=0,cuesAt=-1,clus1=-1;const T=[];
   while(p<b.length){const h=eh(b,p);if(!h)break;if(h.id===CL){clus1=p;break}const s=p+h.hl,e=Math.min(b.length,s+h.sz);
@@ -450,9 +450,9 @@ async function start(f,v,t0,pref,hk={}){stop();
     kids(d,h.hl,d.length,(id,s,e)=>{if(id!==0xBB)return;let t,c;kids(d,s,e,(i,s2,e2)=>{if(i===0xB3)t=uint(d,s2,e2);else if(i===0xB7)kids(d,s2,e2,(j,s3,e3)=>{if(j===0xF1&&c===undefined)c=uint(d,s3,e3)})});if(c!==undefined)cues.push([t*tcs/1e6,c])})}catch(e){console.warn('cues',e)}}
   const posFor=t=>{let c=null;for(const q of cues){if(q[0]<=t*1000)c=q;else break}return c?seg+c[1]:clus1};
   /* MSE */
-  v.disableRemotePlayback=true;const ms=new MS();g.url=URL.createObjectURL(ms);v.src=g.url;
+  hk.st&&hk.st('A iniciar o leitor de vídeo…');v.disableRemotePlayback=true;const ms=new MS();g.url=URL.createObjectURL(ms);v.src=g.url;
   await new Promise(r=>ms.addEventListener('sourceopen',r,{once:true}));if(g.dead)return;
-  ms.duration=(dur*tcs/1e9)||7200;
+  hk.st&&hk.st('A carregar os primeiros dados…');ms.duration=(dur*tcs/1e9)||7200;
   const vsb=ms.addSourceBuffer(vm),asb=ms.addSourceBuffer(am);vsb.timestampOffset=-D/1000;
   const app=(s,d)=>new Promise((res,rej)=>{s.onupdateend=res;s.onerror=()=>rej(new Error('append MSE'));s.appendBuffer(d)});
   const rm=(s,a,z)=>new Promise(res=>{s.onupdateend=res;s.remove(a,z)});
@@ -501,7 +501,7 @@ const TK={a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,made:false,q:{
 const LB={fre:'fra',ger:'deu',chi:'zho',dut:'nld',gre:'ell',cze:'ces',rum:'ron',per:'fas'};
 const tl=t=>{let c=String(t.bcp||t.lang||'').replace(/\0/g,'').toLowerCase();if(!c||c==='und')return'';c=LB[c]||c;try{const n=new Intl.DisplayNames(['pt'],{type:'language'}).of(c);return n?n[0].toUpperCase()+n.slice(1):c}catch(e){return c.toUpperCase()}};
 const tn=(t,i,k)=>[tl(t),t.name&&t.name.toLowerCase()!==tl(t).toLowerCase()?t.name:'',t.frc?'forçadas':''].filter(Boolean).join(' · ')||k+' '+(i+1);
-const HK={aud:0,lb:tl,get pa(){return S.lp&&S.lp.a},
+const HK={aud:0,st(t){const l=$('#ld');if(cur&&l.style.display!=='none'&&!l.querySelector('button'))l.textContent=t},lb:tl,get pa(){return S.lp&&S.lp.a},
   tracks(i){try{this.tracks2(i)}catch(e){console.warn('tracks',e)}},
   tracks2(i){const v=$('#vid');TK.mk=true;
     if(TK.f===cur.id){i.aud.forEach(a=>{const o=TK.a.find(x=>x.n===a.n);if(o)o.cur=a.cur});return}
