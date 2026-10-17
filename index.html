@@ -203,7 +203,7 @@ async function covers(force){if(!S.tmdb||cvB)return;if(force)for(const k in S.ar
   cvB=false;if(!cur&&!$('#cid'))render2()}
 
 /* ---- UI pieces ---- */
-function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL</span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
+function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v4 · remux+capas</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
 addEventListener('scroll',()=>$('#nv').classList.toggle('s',scrollY>40));
 function fcard(f,sub){return`<div class="c" tabindex="0" style="${hv(f.name)}" onclick="play('${f.id}')">${th(f)}${P(f.id).w?'<span class="bd">✓ VISTO</span>':''}<div class="act"><button title="Marcar visto/por ver" onclick="event.stopPropagation();mark('${f.id}')">✓</button><button title="Descarregar" onclick="event.stopPropagation();dl('${f.id}')">↓</button></div><div class="ct">${esc(title(f.name))}<small>${esc(sub||status(f.id))}</small></div><div class="pb"><i style="width:${pct(f.id)}%"></i></div></div>`}
 function scard(lib,name,eps){const w=eps.filter(e=>P(e.id).w).length,t=eps.find(e=>e.th)||eps[0];
