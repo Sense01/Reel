@@ -397,13 +397,13 @@ async function dl(id){const f=byId(id);
   if(S.key){const a=document.createElement('a');a.href=`https://drive.usercontent.google.com/download?id=${id}&export=download&confirm=t`;document.body.appendChild(a);a.click();a.remove();return toast('Download iniciado: vê as transferências do browser')}
   toast('A descarregar '+title(f.name)+'… (pode demorar)');
   try{const b=await blobOf(f,'A descarregar');const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f.name;a.click();toast('Download concluído')}catch(e){toast(e.message)}}
-let cur=null,lastSave=0,nxt=null;
-async function play(id){const f=byId(id);MKV.stop();cur=f;const v=$('#vid');v.style.display='none';v.removeAttribute('src');
+let cur=null,lastSave=0,nxt=null,mkErr='';
+async function play(id){const f=byId(id);MKV.stop();mkErr='';cur=f;const v=$('#vid');v.style.display='none';v.removeAttribute('src');
   const lib=S.libs.find(l=>l.id===f.lib),eps=lib&&lib.type==='series'&&f.show?showsOf(lib)[f.show]:[];
   nxt=eps[eps.findIndex(e=>e.id===id)+1]||null;$('#nx').style.display=nxt?'block':'none';
   $('#pt').textContent=(f.show?f.show+' · ':'')+title(f.name);$('#ifr')?.remove();$('#ld').style.pointerEvents='none';$('#ld').style.display='flex';$('#ld').textContent='A carregar…';$('#pl').classList.add('on');
   try{const p=P(id);let src,mkv=false;
-    if(/\.mkv$/i.test(f.name)&&MKV.ok()){try{$('#ld').textContent='A preparar o MKV…';await MKV.start(f,v,!p.w&&p.t>5?p.t:0);mkv=true}catch(e){console.warn('MKV',e);toast('Remux MKV falhou: '+e.message+'. A usar o método antigo.')}if(cur!==f)return}
+    if(/\.mkv$/i.test(f.name)&&MKV.ok()){try{$('#ld').textContent='A preparar o MKV…';await MKV.start(f,v,!p.w&&p.t>5?p.t:0);mkv=true}catch(e){console.warn('MKV',e);mkErr=e.message;toast('Remux MKV falhou: '+e.message+'. A usar o método antigo.')}if(cur!==f)return}
     if(!mkv){if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}v.src=src}
     if(mkv)v.play().catch(()=>{});
     $('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none'};setTimeout(()=>{if(cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
@@ -416,6 +416,7 @@ async function play(id){const f=byId(id);MKV.stop();cur=f;const v=$('#vid');v.st
           const M={downloadQuotaExceeded:S.key?'Estás a usar a API key (acesso público), que tem este limite. Abre as definições (⚙), cola o Client ID OAuth e clica em Guardar e ligar para usares o teu login Google.':'Mesmo com o teu login, o Google bloqueou este ficheiro. Isto acontece quando o ficheiro não é teu (foi partilhado por outra pessoa). Faz uma cópia para o teu Drive e usa a cópia.',rateLimitExceeded:'Demasiados pedidos seguidos. Espera uns minutos.',userRateLimitExceeded:'Demasiados pedidos seguidos. Espera uns minutos.',dailyLimitExceeded:'A quota diária da API key esgotou.',keyInvalid:'A API key é inválida.',forbidden:'Sem permissão: a pasta tem de estar partilhada como "Qualquer pessoa com o link".',notFound:'Ficheiro não encontrado ou não partilhado.'};
           why=(M[rs]||'O Drive recusou o pedido.')+` [${r.status}${rs?' '+rs:''}]`}
       }catch(e){why='O Safari bloqueou a leitura da resposta do Drive ('+e.message+'). Isto é comum quando a página é aberta por file://. Clica em "Abrir link direto" para ver a resposta real da Google.'}
+      if(mkErr)why='Conversão MKV→MP4 falhou: '+mkErr+' — '+why;
       const l=$('#ld');l.style.display='flex';l.style.pointerEvents='auto';
       l.innerHTML=`<div style="max-width:600px">${esc(why)}<div class="btns" style="justify-content:center;margin-top:20px"><button class="btn" onclick="play('${f.id}')">↻ Tentar novamente</button><button class="btn s" onclick="driveEmbed('${f.id}')">Player do Drive</button><button class="btn s" onclick="dl('${f.id}')">↓ Descarregar</button>${mk?`<button class="btn" onclick="openExt('vlc','${f.id}')">▶ Abrir no VLC</button><button class="btn s" onclick="openExt('iina','${f.id}')">IINA</button><button class="btn s" onclick="openExt('infuse','${f.id}')">Infuse</button><button class="btn s" onclick="copyLink('${f.id}')">Copiar link</button><button class="btn s" onclick="dlM3u('${f.id}')">Ficheiro .m3u</button>`:''}<a class="btn s" style="text-decoration:none" href="${direct(f)}" target="_blank" rel="noopener">Abrir link direto</a></div></div>`};
     v.ontimeupdate=()=>{if(Date.now()-lastSave>4000)persist()};v.onpause=persist;v.onended=()=>{persist();if(nxt)nextEp()};
