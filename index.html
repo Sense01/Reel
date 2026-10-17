@@ -134,7 +134,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const enc=s=>encodeURIComponent(s).replace(/'/g,'%27');
 let S={};try{S=JSON.parse(localStorage.getItem('reel')||'{}')}catch(e){}
-S.cid??='';S.key??='';S.tmdb??='';S.art??={};delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
+S.cid??='';S.key??='';S.tmdb??='';S.art??={};if(S.artv!==4){if(S.artv===3){for(const k in S.art)if(S.art[k].n)delete S.art[k]}else S.art={};S.artv=4}delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
 const save=()=>localStorage.setItem('reel',JSON.stringify(S));
 let V={lib:null,show:null,home:true,season:null};
 const toast=t=>{const m=$('#msg');m.textContent=t;m.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display='none',3500)};
@@ -182,18 +182,41 @@ const nextUp=eps=>eps.find(e=>!P(e.id).w&&P(e.id).t>5)||eps.find(e=>!P(e.id).w)|
 
 /* ---- capas (TMDB) ---- */
 const clean=n=>{const s=n.replace(/\.[^.]+$/,'').replace(/[._]+/g,' ').replace(/\[[^\]]*\]|\([^)]*\)/g,' ').replace(/\s+/g,' ').trim();
-  let i=s.slice(3).search(/\b((19|20)\d{2}|2160p|1080p|720p|480p|MULTi|VF[FI2]?|VOSTFR|TRUEFRENCH|FRENCH|WEB-?Rip|WEB-?DL|Blu-?Ray|BDRip|HDRip|DVDRip|HDTV|x26[45]|H26[45]|HEVC|S\d{1,2}E\d{1,3})\b/i);i=i<0?s.length:i+3;
-  return{t:s.slice(0,i).trim(),y:(s.slice(i).match(/^\W*((19|20)\d{2})\b/)||[])[1]||''}};
+  let i=s.slice(3).search(/(^|[\s-])((19|20)\d{2}|\d{3,4}p|Full ?HD|FHD|UHD|4K|HDR|MULTi|VF[FI2]?|VOSTFR|TRUEFRENCH|FRENCH|DUAL|DUBLADO|LEGENDADO|PT-?(PT|BR)|WEB-?Rip|WEB-?DL|WEB|Blu-?Ray|BDRip|HDRip|DVDRip|HDTV|REMUX|EXTENDED|REPACK|PROPER|[x×]26[45]|H ?26[45]|HEVC|S\d{1,2}E\d{1,3})(?=[\s-]|$)/i);i=i<0?s.length:i+3;
+  return{t:s.slice(0,i).replace(/[\s\-–—:]+$/,'').trim(),y:(s.slice(i).match(/^\W*((19|20)\d{2})(?=\W|$)/)||[])[1]||''}};
 const artKey=f=>{const l=S.libs.find(x=>x.id===f.lib),sr=l&&l.type==='series'&&f.show,c=clean(sr?f.show+'.x':f.name);return(sr?'t':'m')+'|'+c.t+'|'+(sr?'':c.y)};
 const th=(f,w=640,raw)=>{const a=!raw&&f&&S.art[artKey(f)];if(!a||a.n)return thOld(f,w);
   if(a.u)return`<img src="${esc(a.u)}" style="filter:blur(22px) brightness(.55);transform:scale(1.3)" onerror="this.remove()"><img src="${esc(a.u)}" style="object-fit:contain" onerror="this.remove()">`;
   const u=a.b||a.p;return u?`<img loading="lazy" src="https://image.tmdb.org/t/p/${w>900?'w1280':'w780'}${u}" onerror="this.remove()">`:thOld(f,w)};
+const jp=u=>new Promise((res,rej)=>{const n='_cb'+Math.random().toString(36).slice(2),sc=document.createElement('script');
+  const t=setTimeout(()=>{delete window[n];sc.remove();rej(new Error('iTunes não respondeu'))},12000);
+  window[n]=d=>{clearTimeout(t);delete window[n];sc.remove();res(d)};sc.onerror=()=>{clearTimeout(t);delete window[n];sc.remove();rej(new Error('iTunes indisponível'))};
+  sc.src=u+'&callback='+n;document.head.appendChild(sc)});
 async function itu(k){const[t,q,y]=k.split('|'),nz=x=>x.toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g,'');
   if(nz(q).length<2){S.art[k]={n:1};return}
-  const r=await(await fetch('https://itunes.apple.com/search?limit=10&media='+(t==='m'?'movie&entity=movie':'tvShow&entity=tvSeason')+'&term='+encodeURIComponent(q))).json();
-  const m=(r.results||[]).filter(x=>x.artworkUrl100&&nz(x.trackName||x.collectionName||'').includes(nz(q)));
-  if(y)m.sort((a,b)=>(b.releaseDate||'').startsWith(y)-(a.releaseDate||'').startsWith(y));
+  const r=await jp('https://itunes.apple.com/search?limit=15&media='+(t==='m'?'movie&entity=movie':'tvShow&entity=tvSeason')+'&term='+encodeURIComponent(q)),nm=x=>nz(x.trackName||x.collectionName||'');
+  const m=(r.results||[]).filter(x=>x.artworkUrl100&&nm(x).includes(nz(q)));
+  const sc=x=>((y&&(x.releaseDate||'').startsWith(y))?0:1000)+nm(x).length;m.sort((a,b)=>sc(a)-sc(b));
   S.art[k]=m[0]?{u:m[0].artworkUrl100.replace(/\/\d+x\d+bb/,'/600x600bb')}:{n:1}}
+/* capas automáticas sem chave: TVMaze (séries) + Wikipedia (filmes/séries) + iTunes (último recurso) */
+const nz=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g,'');
+async function jf(u,ms=10000){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms);try{const r=await fetch(u,{signal:ac.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(t)}}
+async function tvm(q){const r=await jf('https://api.tvmaze.com/search/shows?q='+encodeURIComponent(q)),n=nz(q);
+  const m=r.filter(x=>x.show&&x.show.image&&(nz(x.show.name)===n||nz(x.show.name).includes(n)));
+  m.sort((a,b)=>(nz(a.show.name)===n?0:1)-(nz(b.show.name)===n?0:1)||b.score-a.score);
+  return m[0]?(m[0].show.image.original||m[0].show.image.medium).replace(/^http:/,'https:'):''}
+async function wk(q,y,t){const n=nz(q);let err=0;
+  for(const lg of['pt','en']){
+    const hint=lg==='pt'?(t==='m'?'filme':'série'):(t==='m'?'film':'TV series'),term=q+(t==='m'&&y?' '+y:'')+' '+hint;
+    try{const d=await jf('https://'+lg+'.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=0&gsrlimit=6&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=600&gsrsearch='+encodeURIComponent(term));
+      const pg=Object.values((d.query&&d.query.pages)||{}).sort((a,b)=>a.index-b.index);
+      const x=pg.find(p=>p.thumbnail&&p.thumbnail.height>p.thumbnail.width&&!/\.svg/i.test(p.thumbnail.source)&&nz(p.title).includes(n));
+      if(x)return x.thumbnail.source}catch(e){err=1}}
+  if(err)throw new Error('wikipedia');return''}
+async function auto(k){const[t,q,y]=k.split('|');let err=0,u='';
+  if(t==='t'){try{u=await tvm(q)}catch(e){err=1}}
+  if(!u){try{u=await wk(q,y,t)}catch(e){err=1}}
+  return u||(err?null:'')}
 async function tm(path,q){const k=S.tmdb,h={};let u='https://api.themoviedb.org/3/'+path+'?'+q;
   if(k.length>40)h.Authorization='Bearer '+k;else u+='&api_key='+encodeURIComponent(k);
   const r=await fetch(u,{headers:h});if(!r.ok)throw new Error('TMDB '+r.status);return(await r.json()).results||[]}
@@ -202,15 +225,20 @@ async function cov(k){const[t,q,y]=k.split('|'),Q='query='+encodeURIComponent(q)
   if(!r.length&&y)r=await tm('search/movie',Q);
   if(!r.length)r=(await tm('search/multi',Q)).filter(x=>x.poster_path||x.backdrop_path);
   const x=r.find(x=>x.backdrop_path||x.poster_path);S.art[k]=x?{b:x.backdrop_path||'',p:x.poster_path||''}:{n:1}}
-let cvB=false;
+let cvB=false,coverMsg='';
+const cstat=()=>{const ks=[...new Set(allFiles().map(artKey))];return'capas '+ks.filter(k=>S.art[k]&&!S.art[k].n).length+'/'+ks.length};
+const idle=()=>!cur&&!$('#cid');
 async function covers(force){if(cvB)return;if(force)for(const k in S.art)if(S.art[k].n||(S.tmdb&&S.art[k].u))delete S.art[k];
-  const ks=[...new Set(allFiles().map(artKey))].filter(k=>!S.art[k]);if(!ks.length)return;cvB=true;
-  try{for(let i=0;i<ks.length;i+=5){await Promise.all(ks.slice(i,i+5).map(S.tmdb?cov:itu));save()}}
-  catch(e){toast(e.message==='TMDB 401'?'Chave TMDB inválida':'Capas: '+e.message)}
-  cvB=false;if(!cur&&!$('#cid'))render2()}
+  const ks=[...new Set(allFiles().map(artKey))].filter(k=>!S.art[k]);coverMsg=cstat();if(!ks.length)return;cvB=true;
+  try{if(S.tmdb){for(let i=0;i<ks.length;i+=5){await Promise.all(ks.slice(i,i+5).map(cov));save()}}
+    else{const rest=[];
+      for(let i=0;i<ks.length;i+=4){await Promise.all(ks.slice(i,i+4).map(async k=>{const u=await auto(k);if(u)S.art[k]={u};else if(u==='')rest.push(k)}));save();coverMsg=cstat();if(idle())render2()}
+      for(let i=0;i<rest.length;i++){try{await itu(rest[i])}catch(e){}save();coverMsg=cstat();if(i%3===2&&idle())render2();await new Promise(r=>setTimeout(r,3200))}}}
+  catch(e){coverMsg='erro nas capas: '+(e.message==='TMDB 401'?'chave TMDB inválida':e.message);toast(coverMsg)}
+  cvB=false;if(!coverMsg.startsWith('erro'))coverMsg=cstat();if(idle())render2()}
 
 /* ---- UI pieces ---- */
-function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v6 · remux+capas</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
+function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v8 · capas auto</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
 addEventListener('scroll',()=>$('#nv').classList.toggle('s',scrollY>40));
 function fcard(f,sub){return`<div class="c" tabindex="0" style="${hv(f.name)}" onclick="play('${f.id}')">${th(f)}${P(f.id).w?'<span class="bd">✓ VISTO</span>':''}<div class="act"><button title="Marcar visto/por ver" onclick="event.stopPropagation();mark('${f.id}')">✓</button><button title="Descarregar" onclick="event.stopPropagation();dl('${f.id}')">↓</button></div><div class="ct">${esc(title(f.name))}<small>${esc(sub||status(f.id))}</small></div><div class="pb"><i style="width:${pct(f.id)}%"></i></div></div>`}
 function scard(lib,name,eps){const w=eps.filter(e=>P(e.id).w).length,t=eps.find(e=>e.th)||eps[0];
@@ -225,7 +253,7 @@ function render(){nav();scrollTo(0,0);const m=$('#main');
   if(V.home)return home(m);
   const lib=S.libs.find(l=>l.id===V.lib);if(!lib)return home(m);
   const files=S.cache[lib.id]||[];
-  const head=`<div class="pg"><h1>${esc(lib.name)}</h1><div class="sub">${files.length} vídeos · <a onclick="rescan('${lib.id}')">Atualizar Drive</a> · <a onclick="delLib('${lib.id}')">Remover biblioteca</a></div>`;
+  const head=`<div class="pg"><h1>${esc(lib.name)}</h1><div class="sub">${files.length} vídeos${coverMsg?' · '+esc(coverMsg):''} · <a onclick="rescan('${lib.id}')">Atualizar Drive</a> · <a onclick="delLib('${lib.id}')">Remover biblioteca</a></div>`;
   if(!files.length)return m.innerHTML=head+`<div class="box">Ainda sem vídeos. <button class="pri" onclick="rescan('${lib.id}')">Analisar pasta</button></div></div>`;
   if(lib.type==='movies')return m.innerHTML=head+`<div class="gr">${files.map(f=>fcard(f)).join('')}</div></div>`;
   const shows=showsOf(lib);
@@ -254,7 +282,7 @@ function settings(){$('#main').innerHTML=`<div class="pg" style="padding-top:120
   <label>Client ID OAuth<input id="cid" value="${esc(S.cid)}" placeholder="123456-abc.apps.googleusercontent.com"></label>
   <details style="margin-bottom:16px;color:var(--mut)"><summary style="cursor:pointer">Alternativa: API key (só pastas públicas)</summary><label>API key<input id="key" value="${esc(S.key)}" placeholder="AIzaSy…"></label></details>
   <button class="pri" onclick="S.cid=$('#cid').value.trim();S.key=S.cid?'':($('#key').value.trim());save();if(S.cid)auth().then(()=>{toast('Ligado ao Drive');go()}).catch(e=>toast(e.message));else if(S.key){toast('API key guardada');go()}else toast('Cola o Client ID')">Guardar e ligar</button></div>
-  <div class="box" style="margin-top:18px"><b>Capas dos filmes e séries</b><p style="color:var(--mut)">Sem chave, o REEL usa as capas do iTunes (verticais). Com uma chave gratuita do TMDB as capas são horizontais e mais bonitas: cria conta em themoviedb.org, vai a Definições › API e cola aqui a chave (API Key ou Read Access Token).</p><label>Chave TMDB<input id="tm" value="${esc(S.tmdb)}" placeholder="a tua chave"></label><button class="pri" onclick="S.tmdb=$('#tm').value.trim();save();toast(S.tmdb?'Chave guardada. A procurar capas…':'Chave removida');covers(true)">Guardar chave</button></div></div>`}
+  <div class="box" style="margin-top:18px"><b>Capas dos filmes e séries</b><p style="color:var(--mut)">O REEL procura as capas sozinho (TVMaze, Wikipedia e iTunes), sem precisares de fazer nada. A chave do TMDB é opcional e dá capas horizontais: cria conta em themoviedb.org, vai a Definições › API e cola aqui a chave (API Key ou Read Access Token).</p><label>Chave TMDB<input id="tm" value="${esc(S.tmdb)}" placeholder="a tua chave"></label><button class="pri" onclick="S.tmdb=$('#tm').value.trim();save();toast(S.tmdb?'Chave guardada. A procurar capas…':'Chave removida');covers(true)">Guardar chave</button></div></div>`}
 
 /* ---- libraries ---- */
 let stack=[];
