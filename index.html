@@ -497,7 +497,7 @@ return{ok,start,stop}})();
 
 /* ---- áudio e legendas ---- */
 const OWN=new WeakSet();
-const TK={a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,pref:'',si:-1};
+const TK={a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,made:false,q:{},pref:'',si:-1};
 const LB={fre:'fra',ger:'deu',chi:'zho',dut:'nld',gre:'ell',cze:'ces',rum:'ron',per:'fas'};
 const tl=t=>{let c=String(t.bcp||t.lang||'').replace(/\0/g,'').toLowerCase();if(!c||c==='und')return'';c=LB[c]||c;try{const n=new Intl.DisplayNames(['pt'],{type:'language'}).of(c);return n?n[0].toUpperCase()+n.slice(1):c}catch(e){return c.toUpperCase()}};
 const tn=(t,i,k)=>[tl(t),t.name&&t.name.toLowerCase()!==tl(t).toLowerCase()?t.name:'',t.frc?'forçadas':''].filter(Boolean).join(' · ')||k+' '+(i+1);
@@ -506,11 +506,13 @@ const HK={aud:0,lb:tl,get pa(){return S.lp&&S.lp.a},
   tracks2(i){const v=$('#vid');TK.mk=true;
     if(TK.f===cur.id){i.aud.forEach(a=>{const o=TK.a.find(x=>x.n===a.n);if(o)o.cur=a.cur});return}
     TK.f=cur.id;TK.a=i.aud;TK.s=i.sub;
-    TK.s.forEach(t=>{if(!t.ok)return;const k=v.addTextTrack('subtitles',tn(t,0,'Legenda'),String(t.bcp||t.lang||'und'));k.mode='hidden';OWN.add(k);t.tt=k;TK.tt[t.n]=k});
-    TK.pd=true;const ps=S.lp&&S.lp.s,j=ps?TK.s.findIndex(t=>t.ok&&tl(t)===ps):-1;if(j>=0)setSub(j);trkBtn()},
+    },
   cur(n){TK.a.forEach(x=>x.cur=x.n===n)},
-  sub(n,a,b,x){const t=TK.tt[n];if(!t)return;const k=n+'|'+a.toFixed(2)+'|'+x;if(TK.seen.has(k))return;TK.seen.add(k);try{t.addCue(new VTTCue(a,b,x))}catch(_){}}};
-function tkReset(){Object.values(TK.tt).forEach(t=>{try{for(const c of Array.from(t.cues||[]))t.removeCue(c);t.mode='disabled'}catch(e){}});Object.assign(TK,{a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,pref:'',si:-1});HK.aud=0;$('#tk').style.display='none';$('#tm').classList.remove('on')}
+  sub(n,a,b,x){const t=TK.tt[n],k=n+'|'+a.toFixed(2)+'|'+x;if(TK.seen.has(k))return;TK.seen.add(k);try{const c=new VTTCue(a,b,x);if(t)t.addCue(c);else(TK.q[n]=TK.q[n]||[]).push(c)}catch(_){}}};
+function tkReset(){Object.values(TK.tt).forEach(t=>{try{for(const c of Array.from(t.cues||[]))t.removeCue(c);t.mode='disabled'}catch(e){}});Object.assign(TK,{a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,made:false,q:{},pref:'',si:-1});HK.aud=0;$('#tk').style.display='none';$('#tm').classList.remove('on')}
+function mkTracks(){if(!TK.mk||TK.made)return;TK.made=true;const v=$('#vid');
+  TK.s.forEach(t=>{if(!t.ok)return;try{const k=v.addTextTrack('subtitles',tn(t,0,'Legenda'),String(t.bcp||t.lang||'und'));k.mode='hidden';OWN.add(k);t.tt=k;TK.tt[t.n]=k;(TK.q[t.n]||[]).forEach(c=>{try{k.addCue(c)}catch(e){}})}catch(e){console.warn('tt',e)}});
+  TK.q={};TK.pd=true;const ps=S.lp&&S.lp.s,j=ps?TK.s.findIndex(t=>t.ok&&tl(t)===ps):-1;if(j>=0)setSub(j);trkBtn()}
 function trkBtn(){$('#tk').style.display=TK.a.length>1||TK.s.length?'':'none'}
 function nativeTracks(v){if(TK.mk)return;try{nativeTracks2(v)}catch(e){console.warn('tracks',e)}}
 function nativeTracks2(v){
@@ -551,8 +553,8 @@ async function play(id){const f=byId(id);MKV.stop();tkReset();mkErr='';cur=f;con
   try{const p=P(id);let src,mkv=false;
     if(/\.mkv$/i.test(f.name)&&MKV.ok()){try{$('#ld').textContent='A preparar o MKV…';const t0=!p.w&&p.t>5?p.t:0;try{await MKV.start(f,v,t0,'',HK)}catch(e){if(!/E-AC-3/.test(e.message))throw e;console.warn('EAC3 falhou, a tentar AAC:',e.message);TK.pref='aac';await MKV.start(f,v,t0,'aac',HK);toast('A usar a pista AAC: a pista EAC3 deste ficheiro não é compatível')}mkv=true}catch(e){console.warn('MKV',e);mkErr=e.message;tkReset();toast('Remux MKV falhou: '+e.message+'. A usar o método antigo.')}if(cur!==f)return}
     if(!mkv){if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}v.src=src}
-    if(mkv)v.play().catch(()=>{});
-    $('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none';nativeTracks(v)};setTimeout(()=>{if(cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
+    if(mkv){v.play().catch(()=>{});try{mkTracks()}catch(e){console.warn(e)}}
+    $('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none';nativeTracks(v)};setTimeout(()=>{if(!mkv&&cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
     v.onloadedmetadata=()=>{if(!p.w&&p.t>5&&p.t<v.duration-10)v.currentTime=p.t;nativeTracks(v);v.play().catch(()=>{})};
     v.onerror=async()=>{v.style.display='none';const ce=v.error?v.error.code:0;let why='O browser não conseguiu reproduzir este ficheiro.',mk=false;
       try{const ac=new AbortController();const r=await fetch(direct(f),{signal:ac.signal});
