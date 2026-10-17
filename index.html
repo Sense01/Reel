@@ -273,7 +273,7 @@ async function play(id){const f=byId(id);cur=f;const v=$('#vid');v.style.display
           why=(M[rs]||'O Drive recusou o pedido.')+` [${r.status}${rs?' '+rs:''}]`}
       }catch(e){why='O Safari bloqueou a leitura da resposta do Drive ('+e.message+'). Isto é comum quando a página é aberta por file://. Clica em "Abrir link direto" para ver a resposta real da Google.'}
       const l=$('#ld');l.style.display='flex';l.style.pointerEvents='auto';
-      l.innerHTML=`<div style="max-width:600px">${esc(why)}<div class="btns" style="justify-content:center;margin-top:20px"><button class="btn" onclick="play('${f.id}')">↻ Tentar novamente</button><button class="btn s" onclick="driveEmbed('${f.id}')">Player do Drive</button><button class="btn s" onclick="dl('${f.id}')">↓ Descarregar</button>${mk?`<button class="btn" onclick="openExt('vlc','${f.id}')">▶ Abrir no VLC</button><button class="btn s" onclick="openExt('iina','${f.id}')">IINA</button><button class="btn s" onclick="openExt('infuse','${f.id}')">Infuse</button><button class="btn s" onclick="copyLink('${f.id}')">Copiar link</button>`:''}<a class="btn s" style="text-decoration:none" href="${direct(f)}" target="_blank" rel="noopener">Abrir link direto</a></div></div>`};
+      l.innerHTML=`<div style="max-width:600px">${esc(why)}<div class="btns" style="justify-content:center;margin-top:20px"><button class="btn" onclick="play('${f.id}')">↻ Tentar novamente</button><button class="btn s" onclick="driveEmbed('${f.id}')">Player do Drive</button><button class="btn s" onclick="dl('${f.id}')">↓ Descarregar</button>${mk?`<button class="btn" onclick="openExt('vlc','${f.id}')">▶ Abrir no VLC</button><button class="btn s" onclick="openExt('iina','${f.id}')">IINA</button><button class="btn s" onclick="openExt('infuse','${f.id}')">Infuse</button><button class="btn s" onclick="copyLink('${f.id}')">Copiar link</button><button class="btn s" onclick="dlM3u('${f.id}')">Ficheiro .m3u</button>`:''}<a class="btn s" style="text-decoration:none" href="${direct(f)}" target="_blank" rel="noopener">Abrir link direto</a></div></div>`};
     v.ontimeupdate=()=>{if(Date.now()-lastSave>4000)persist()};v.onpause=persist;v.onended=()=>{persist();if(nxt)nextEp()};
   }catch(e){$('#ld').textContent=e.message}}
 async function diag(f){const l=$('#ld');l.style.display='flex';l.style.pointerEvents='auto';l.textContent='A diagnosticar…';const i=[];
@@ -281,9 +281,22 @@ async function diag(f){const l=$('#ld');l.style.display='flex';l.style.pointerEv
   try{const r=await fetch(swUrl(f),{headers:{Range:'bytes=0-1'}});i.push('resposta: '+r.status,'content-range: '+(r.headers.get('content-range')||'-'),'tipo: '+(r.headers.get('content-type')||'-'));if(!r.ok)i.push((await r.text()).slice(0,240))}catch(e){i.push('erro: '+e.message)}
   l.innerHTML=`<div style="max-width:620px">O vídeo não arrancou.<pre style="text-align:left;white-space:pre-wrap;color:#cfcfd6;font-size:13px;background:#ffffff0f;padding:12px;border-radius:8px;margin:14px 0">${esc(i.join('\n'))}</pre><div class="btns" style="justify-content:center"><button class="btn" onclick="play('${f.id}')">↻ Tentar novamente</button><button class="btn s" onclick="driveEmbed('${f.id}')">Player do Drive</button></div></div>`}
 async function extUrl(id){if(S.key)return mediaUrl(id);await auth();return `https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true&access_token=${encodeURIComponent(tok)}`}
-async function openExt(app,id){try{const u=await extUrl(id),e=encodeURIComponent(u);try{await navigator.clipboard.writeText(u)}catch(_){}
-  location.href={vlc:'vlc://'+u,iina:'iina://weblink?url='+e,infuse:'infuse://x-callback-url/play?url='+e}[app];toast('Link copiado. Se o player não abrir sozinho: abre-o, usa Abrir rede/URL (VLC: Cmd+N, IINA: Cmd+U) e cola.')}catch(e){toast(e.message)}}
-async function copyLink(id){try{await navigator.clipboard.writeText(await extUrl(id));toast('Link copiado. No VLC: Ficheiro > Abrir rede (Cmd+N) e cola')}catch(e){toast('Não foi possível copiar: '+e.message)}}
+async function checkUrl(u){
+  try{const ac=new AbortController();const r=await fetch(u,{signal:ac.signal});if(r.ok){ac.abort();return null}
+    let j={};try{j=await r.json()}catch(e){}const m=(j.error&&j.error.message)||'';let extra='';
+    if(r.status===401&&tok){try{const t=await(await fetch('https://oauth2.googleapis.com/tokeninfo?access_token='+encodeURIComponent(tok))).json();
+      extra=t.error_description?' | Token: '+t.error_description:' | Token válido, expira em '+t.expires_in+'s, permissões: '+String(t.scope||'').split(' ').map(x=>x.split('/').pop()).join(', ')}catch(e){}}
+    return 'O Google recusou o link ('+r.status+(m?': '+m:'')+')'+extra}
+  catch(e){return null}}
+async function openExt(app,id){try{const u=await extUrl(id),bad=await checkUrl(u);if(bad)return alert(bad);
+  const e=encodeURIComponent(u);try{await navigator.clipboard.writeText(u)}catch(_){}
+  location.href={vlc:'vlc://'+u,iina:'iina://open?url='+e,infuse:'infuse://x-callback-url/play?url='+e}[app];
+  toast('Link copiado. Se o player não abrir sozinho: abre-o, usa Abrir rede/URL (VLC: Cmd+N, IINA: Cmd+U) e cola.')}catch(e){toast(e.message)}}
+async function copyLink(id){try{const u=await extUrl(id),bad=await checkUrl(u);if(bad)return alert(bad);await navigator.clipboard.writeText(u);toast('Link copiado. VLC: Cmd+N e cola. IINA: Cmd+U e cola.')}catch(e){toast('Não foi possível copiar: '+e.message)}}
+async function dlM3u(id){try{const f=byId(id),u=await extUrl(id),bad=await checkUrl(u);if(bad)return alert(bad);
+  const t=title(f.name),a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['#EXTM3U\n#EXTINF:-1,'+t+'\n'+u+'\n'],{type:'audio/x-mpegurl'}));
+  a.download=t.replace(/[\\/:*?"<>|]/g,'_')+'.m3u';document.body.appendChild(a);a.click();a.remove();
+  toast('Abre o ficheiro .m3u descarregado com o VLC ou o IINA (botão direito > Abrir com). Válido cerca de 1 hora.')}catch(e){toast(e.message)}}
 let embT=0;
 function driveEmbed(id){embT=Date.now();const v0=$('#vid');v0.pause();v0.style.display='none';const q=P(id);if(q.t>5&&!q.w)toast('Última posição: '+mmss(q.t)+'. Usa a barra do player para saltar.');$('#ld').style.display='none';$('#ifr')?.remove();const i=document.createElement('iframe');i.id='ifr';i.src='https://drive.google.com/file/d/'+id+'/preview';i.allow='autoplay; fullscreen';i.style.cssText='position:absolute;inset:68px 0 0 0;width:100%;height:calc(100% - 68px);border:0;background:#000';$('#pl').appendChild(i)}
 function askStop(){if(!cur)return;const p=S.prog[cur.id]=P(cur.id),el=Math.round((Date.now()-embT)/1000);
