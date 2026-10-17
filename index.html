@@ -134,7 +134,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const enc=s=>encodeURIComponent(s).replace(/'/g,'%27');
 let S={};try{S=JSON.parse(localStorage.getItem('reel')||'{}')}catch(e){}
-S.cid??='';S.key??='';S.tmdb??='';S.art??={};if(S.artv!==4){if(S.artv===3){for(const k in S.art)if(S.art[k].n)delete S.art[k]}else S.art={};S.artv=4}delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
+S.cid??='';S.key??='';S.tmdb??='';S.art??={};if(S.artv!==5){S.art={};S.artv=5}delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
 const save=()=>localStorage.setItem('reel',JSON.stringify(S));
 let V={lib:null,show:null,home:true,season:null};
 const toast=t=>{const m=$('#msg');m.textContent=t;m.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display='none',3500)};
@@ -165,7 +165,7 @@ async function scan(lib){const out=[];
   await w(lib.folder,'');S.cache[lib.id]=out;save()}
 
 /* ---- helpers ---- */
-const title=n=>n.replace(/\.[^.]+$/,'').replace(/[._]+/g,' ').trim();
+const title=n=>{const o=n.replace(/\.[^.]+$/,'').replace(/[._]+/g,' ').trim();if(se(n)[1])return o;const c=clean(n);return c.t.length>1?c.t+(c.y?' ('+c.y+')':''):o};
 const se=n=>{const m=n.match(/s(\d{1,2})\s*e(\d{1,3})/i)||n.match(/(\d{1,2})x(\d{2,3})/i);return m?[+m[1],+m[2]]:[0,0]};
 const hue=s=>{let h=0;for(const c of s)h=(h*31+c.charCodeAt(0))%360;return h};
 const hv=s=>`--h1:hsl(${245+hue(s)%40} 28% 24%);--h2:hsl(250 18% 9%)`;
@@ -198,25 +198,34 @@ async function itu(k){const[t,q,y]=k.split('|'),nz=x=>x.toLowerCase().normalize(
   const m=(r.results||[]).filter(x=>x.artworkUrl100&&nm(x).includes(nz(q)));
   const sc=x=>((y&&(x.releaseDate||'').startsWith(y))?0:1000)+nm(x).length;m.sort((a,b)=>sc(a)-sc(b));
   S.art[k]=m[0]?{u:m[0].artworkUrl100.replace(/\/\d+x\d+bb/,'/600x600bb')}:{n:1}}
-/* capas automáticas sem chave: TVMaze (séries) + Wikipedia (filmes/séries) + iTunes (último recurso) */
+/* capas automáticas sem chave: IMDb + TVMaze + Wikipedia + iTunes (último recurso) */
 const nz=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g,'');
+const wtk=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(/[^a-z0-9]+/).filter(Boolean);
+const wcov=(q,t)=>{const a=wtk(q),b=new Set(wtk(t));return a.length?a.filter(w=>b.has(w)).length/a.length:0};
 async function jf(u,ms=10000){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms);try{const r=await fetch(u,{signal:ac.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(t)}}
+async function imdb(q,y,t){
+  const d=await jf('https://v3.sg.media-imdb.com/suggestion/x/'+encodeURIComponent(q.toLowerCase())+'.json'),ok=t==='t'?['tvSeries','tvMiniSeries']:['movie','tvMovie','video'],want=wtk(q).join(' ');
+  const m=(d.d||[]).map((x,i)=>({x,i})).filter(({x})=>x.i&&x.i.imageUrl&&/^tt/.test(x.id||'')&&ok.includes(x.qid)&&wcov(q,x.l)>=.75&&wcov(x.l,q)>=.5);
+  const sc=({x,i})=>(wtk(x.l).join(' ')===want?0:100)+(y&&t==='m'?(+x.y===+y?0:Math.abs((+x.y||0)-y)<=1?10:60):0)+i;
+  m.sort((a,b)=>sc(a)-sc(b));
+  return m[0]?m[0].x.i.imageUrl.replace(/\._V1_.*\.(jpg|png)$/i,'._V1_UY600_.$1'):''}
 async function tvm(q){const r=await jf('https://api.tvmaze.com/search/shows?q='+encodeURIComponent(q)),n=nz(q);
-  const m=r.filter(x=>x.show&&x.show.image&&(nz(x.show.name)===n||nz(x.show.name).includes(n)));
+  const m=r.filter(x=>x.show&&x.show.image&&nz(x.show.name).includes(n));
   m.sort((a,b)=>(nz(a.show.name)===n?0:1)-(nz(b.show.name)===n?0:1)||b.score-a.score);
   return m[0]?(m[0].show.image.original||m[0].show.image.medium).replace(/^http:/,'https:'):''}
-async function wk(q,y,t){const n=nz(q);let err=0;
-  for(const lg of['pt','en']){
-    const hint=lg==='pt'?(t==='m'?'filme':'série'):(t==='m'?'film':'TV series'),term=q+(t==='m'&&y?' '+y:'')+' '+hint;
-    try{const d=await jf('https://'+lg+'.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=0&gsrlimit=6&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=600&gsrsearch='+encodeURIComponent(term));
-      const pg=Object.values((d.query&&d.query.pages)||{}).sort((a,b)=>a.index-b.index);
-      const x=pg.find(p=>p.thumbnail&&p.thumbnail.height>p.thumbnail.width&&!/\.svg/i.test(p.thumbnail.source)&&nz(p.title).includes(n));
-      if(x)return x.thumbnail.source}catch(e){err=1}}
-  if(err)throw new Error('wikipedia');return''}
-async function auto(k){const[t,q,y]=k.split('|');let err=0,u='';
-  if(t==='t'){try{u=await tvm(q)}catch(e){err=1}}
-  if(!u){try{u=await wk(q,y,t)}catch(e){err=1}}
-  return u||(err?null:'')}
+async function wk(q,y,t){let err=0,done=0;
+  for(const lg of['en','pt']){
+    const hint=lg==='pt'?(t==='m'?'filme':'série'):(t==='m'?'film':'TV series');
+    for(const term of(y&&t==='m'?[q+' '+y+' '+hint,q+' '+hint]:[q+' '+hint])){
+      try{const d=await jf('https://'+lg+'.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrnamespace=0&gsrlimit=6&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=600&gsrsearch='+encodeURIComponent(term));done=1;
+        const pg=Object.values((d.query&&d.query.pages)||{}).sort((a,b)=>a.index-b.index);
+        const x=pg.find(p=>p.thumbnail&&p.thumbnail.height>p.thumbnail.width&&!/\.svg/i.test(p.thumbnail.source)&&wcov(q,p.title)>=.99);
+        if(x)return x.thumbnail.source}catch(e){err=1}}}
+  if(err&&!done)throw new Error('wikipedia');return''}
+async function auto(k){const[t,q,y]=k.split('|');let u='',ok=0;
+  const ps=t==='t'?[()=>tvm(q),()=>imdb(q,y,t),()=>wk(q,y,t)]:[()=>imdb(q,y,t),()=>wk(q,y,t)];
+  for(const p of ps){try{u=await p();ok=1;if(u)break}catch(e){}}
+  return u||(ok?'':null)}
 async function tm(path,q){const k=S.tmdb,h={};let u='https://api.themoviedb.org/3/'+path+'?'+q;
   if(k.length>40)h.Authorization='Bearer '+k;else u+='&api_key='+encodeURIComponent(k);
   const r=await fetch(u,{headers:h});if(!r.ok)throw new Error('TMDB '+r.status);return(await r.json()).results||[]}
@@ -238,7 +247,7 @@ async function covers(force){if(cvB)return;if(force)for(const k in S.art)if(S.ar
   cvB=false;if(!coverMsg.startsWith('erro'))coverMsg=cstat();if(idle())render2()}
 
 /* ---- UI pieces ---- */
-function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v8 · capas auto</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
+function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v9 · capas auto</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
 addEventListener('scroll',()=>$('#nv').classList.toggle('s',scrollY>40));
 function fcard(f,sub){return`<div class="c" tabindex="0" style="${hv(f.name)}" onclick="play('${f.id}')">${th(f)}${P(f.id).w?'<span class="bd">✓ VISTO</span>':''}<div class="act"><button title="Marcar visto/por ver" onclick="event.stopPropagation();mark('${f.id}')">✓</button><button title="Descarregar" onclick="event.stopPropagation();dl('${f.id}')">↓</button></div><div class="ct">${esc(title(f.name))}<small>${esc(sub||status(f.id))}</small></div><div class="pb"><i style="width:${pct(f.id)}%"></i></div></div>`}
 function scard(lib,name,eps){const w=eps.filter(e=>P(e.id).w).length,t=eps.find(e=>e.th)||eps[0];
@@ -282,7 +291,7 @@ function settings(){$('#main').innerHTML=`<div class="pg" style="padding-top:120
   <label>Client ID OAuth<input id="cid" value="${esc(S.cid)}" placeholder="123456-abc.apps.googleusercontent.com"></label>
   <details style="margin-bottom:16px;color:var(--mut)"><summary style="cursor:pointer">Alternativa: API key (só pastas públicas)</summary><label>API key<input id="key" value="${esc(S.key)}" placeholder="AIzaSy…"></label></details>
   <button class="pri" onclick="S.cid=$('#cid').value.trim();S.key=S.cid?'':($('#key').value.trim());save();if(S.cid)auth().then(()=>{toast('Ligado ao Drive');go()}).catch(e=>toast(e.message));else if(S.key){toast('API key guardada');go()}else toast('Cola o Client ID')">Guardar e ligar</button></div>
-  <div class="box" style="margin-top:18px"><b>Capas dos filmes e séries</b><p style="color:var(--mut)">O REEL procura as capas sozinho (TVMaze, Wikipedia e iTunes), sem precisares de fazer nada. A chave do TMDB é opcional e dá capas horizontais: cria conta em themoviedb.org, vai a Definições › API e cola aqui a chave (API Key ou Read Access Token).</p><label>Chave TMDB<input id="tm" value="${esc(S.tmdb)}" placeholder="a tua chave"></label><button class="pri" onclick="S.tmdb=$('#tm').value.trim();save();toast(S.tmdb?'Chave guardada. A procurar capas…':'Chave removida');covers(true)">Guardar chave</button></div></div>`}
+  <div class="box" style="margin-top:18px"><b>Capas dos filmes e séries</b><p style="color:var(--mut)">O REEL procura as capas sozinho (IMDb, TVMaze, Wikipedia e iTunes), sem precisares de fazer nada. A chave do TMDB é opcional e dá capas horizontais: cria conta em themoviedb.org, vai a Definições › API e cola aqui a chave (API Key ou Read Access Token).</p><label>Chave TMDB<input id="tm" value="${esc(S.tmdb)}" placeholder="a tua chave"></label><button class="pri" onclick="S.tmdb=$('#tm').value.trim();save();toast(S.tmdb?'Chave guardada. A procurar capas…':'Chave removida');covers(true)">Guardar chave</button></div></div>`}
 
 /* ---- libraries ---- */
 let stack=[];
