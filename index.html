@@ -109,6 +109,10 @@ input,select{font:inherit;background:#0c0b11;color:#fff;border:1px solid #ffffff
 #pb{position:absolute;top:0;left:0;right:0;padding:18px 3%;display:flex;gap:16px;align-items:center;background:linear-gradient(#000b,#0000);z-index:2;transition:opacity .3s}
 #pb b{flex:1;font-size:18px}
 #ld{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--mut);text-align:center;padding:30px;pointer-events:none}
+#tm{position:absolute;top:64px;right:3%;z-index:5;background:#181622f5;border:1px solid #ffffff1f;border-radius:12px;padding:14px;min-width:260px;max-width:92vw;max-height:70vh;overflow:auto;display:none}#tm.on{display:block}
+#tm h4{margin:12px 0 6px;font-size:11px;letter-spacing:.14em;color:var(--mut)}#tm h4:first-child{margin-top:0}
+#tm button{display:block;width:100%;text-align:left;background:0;padding:8px 10px;border-radius:6px;font-size:14px}#tm button:hover{background:#ffffff1f}#tm button.on{color:var(--ok);font-weight:700}#tm button.x{opacity:.4;cursor:not-allowed}
+#vid::cue{background:#000b;color:#fff;font:600 1.15em Inter,system-ui,sans-serif}
 #msg{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ac);color:#fff;font-weight:600;padding:10px 20px;border-radius:6px;display:none;z-index:40}
 @media(max-width:760px){.ep .th{flex-basis:120px}.ep .ab{display:none}#nv{gap:14px}
   :root{--cw:clamp(128px,38vw,176px)}
@@ -156,7 +160,7 @@ input,select{font:inherit;background:#0c0b11;color:#fff;border:1px solid #ffffff
 </div></div>
 
 <div id="pl">
-  <div id="pb"><button class="ib" onclick="closePlayer()" aria-label="Voltar">←</button><b id="pt"></b><button class="btn s" id="nx" style="display:none;padding:8px 18px;font-size:15px" onclick="nextEp()">Próximo ▶</button></div>
+  <div id="pb"><button class="ib" onclick="closePlayer()" aria-label="Voltar">←</button><b id="pt"></b><button class="btn s" id="tk" style="display:none;padding:8px 18px;font-size:15px" onclick="trkMenu()">Áudio e legendas</button><button class="btn s" id="nx" style="display:none;padding:8px 18px;font-size:15px" onclick="nextEp()">Próximo ▶</button></div><div id="tm"></div>
   <div id="ld"></div><video id="vid" controls style="display:none"></video>
 </div>
 <div id="msg"></div>
@@ -291,7 +295,7 @@ async function covers(force){if(cvB)return;if(force)for(const k in S.art)if(S.ar
   cvB=false;if(!coverMsg.startsWith('erro'))coverMsg=cstat();if(idle())render2()}
 
 /* ---- UI pieces ---- */
-function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v13 · capas premium</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
+function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v14 · áudio e legendas</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
 addEventListener('scroll',()=>$('#nv').classList.toggle('s',scrollY>40));
 const seenImg=new Set();
 const pim=u=>`<img ${seenImg.has(u)?'class="in" ':''}loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="" src="${esc(u)}" onload="seenImg.add(this.getAttribute('src'));this.classList.add('in')" onerror="this.parentNode.classList.add('nf');this.remove()">`;
@@ -382,8 +386,8 @@ const kids=(b,s,e,f)=>{let p=s;while(p<e){const h=eh(b,p);if(!h)break;const a=p+
 const uint=(b,s,e)=>{let v=0;for(;s<e;s++)v=v*256+b[s];return v};
 const flt=(b,s,e)=>{const d=new DataView(b.buffer,b.byteOffset+s,e-s);return e-s===4?d.getFloat32(0):d.getFloat64(0)};
 function blocks(b,s,e,tcs,out,dd){let tc=0;
-  const blk=(s,e,key)=>{const a=rv(b,s,0);if(!a)return;const o=s+a[1],rel=((b[o]<<8|b[o+1])<<16)>>16,fl=b[o+2],ts=(tc+rel)*tcs/1e6,lc=fl>>1&3,k=key??!!(fl&128);let q=o+3;
-    if(!lc){out.push({tr:a[0],ts,key:k,d:b.subarray(q,e)});return}
+  const blk=(s,e,key,bu)=>{const a=rv(b,s,0);if(!a)return;const o=s+a[1],rel=((b[o]<<8|b[o+1])<<16)>>16,fl=b[o+2],ts=(tc+rel)*tcs/1e6,lc=fl>>1&3,k=key??!!(fl&128);let q=o+3;
+    if(!lc){out.push({tr:a[0],ts,key:k,d:b.subarray(q,e),bd:bu*tcs/1e6});return}
     const n=b[q++]+1,z=[];
     if(lc===1){for(let i=0;i<n-1;i++){let x=0,c;do{c=b[q++];x+=c}while(c===255);z.push(x)}}
     else if(lc===3){let r=rv(b,q,0);z.push(r[0]);q+=r[1];for(let i=1;i<n-1;i++){r=rv(b,q,0);q+=r[1];z.push(z[i-1]+r[0]-(2**(7*r[1]-1)-1))}}
@@ -391,7 +395,7 @@ function blocks(b,s,e,tcs,out,dd){let tc=0;
     z.push(e-q-z.reduce((x,y)=>x+y,0));const du=dd[a[0]]||32;
     z.forEach((x,i)=>{out.push({tr:a[0],ts:ts+i*du,key:k,d:b.subarray(q,q+x)});q+=x})};
   kids(b,s,e,(id,s,e)=>{if(id===0xE7)tc=uint(b,s,e);else if(id===0xA3)blk(s,e);
-    else if(id===0xA0){let k=true,bs,be;kids(b,s,e,(i,s2,e2)=>{if(i===0xA1){bs=s2;be=e2}else if(i===0xFB)k=false});if(bs!==undefined)blk(bs,be,k)}})}
+    else if(id===0xA0){let k=true,bs,be,bu;kids(b,s,e,(i,s2,e2)=>{if(i===0xA1){bs=s2;be=e2}else if(i===0xFB)k=false;else if(i===0x9B)bu=uint(b,s2,e2)});if(bs!==undefined)blk(bs,be,k,bu)}})}
 /* MP4 */
 const init=(vid,ent,W,H)=>cat(box('ftyp',st('isom'),i32(512),st('isomiso6avc1')),box('moov',
   fb('mvhd',0,0,i32(0),i32(0),i32(1000),i32(0),i32(65536),i16(256),new U(10),MAT,new U(24),i32(2)),
@@ -406,6 +410,7 @@ let seq=0;
 const frag=(S,base,vid)=>{const mk=off=>box('moof',fb('mfhd',0,0,i32(++seq)),box('traf',fb('tfhd',0,0x20000,i32(1)),fb('tfdt',1,0,i32(0),i32(base)),
     fb('trun',1,vid?0xF01:0x301,i32(S.length),i32(off),...S.map(s=>cat(i32(s.d),i32(s.sz),...(vid?[i32(s.fl),i32(s.c)]:[]))))));
   const m0=mk(0),m=mk(m0.length+8);return cat(m,box('mdat',...S.map(s=>s.data)))};
+const sub=(d,c)=>{let s=new TextDecoder().decode(d);if(/ASS|SSA/.test(c)){let p=-1;for(let i=0;i<8;i++){p=s.indexOf(',',p+1);if(p<0)return''}s=s.slice(p+1);if(/\\p[1-9]/.test(s))return'';s=s.replace(/\{[^}]*\}/g,'').replace(/\\[Nn]/g,'\n').replace(/\\h/g,' ')}return s.replace(/\r/g,'').trim()};
 /* sessão */
 let G=null;
 const ok=()=>!!(window.MediaSource||window.ManagedMediaSource);
@@ -414,7 +419,7 @@ async function rng(f,a,b){if(a>=f.size)return new U(0);
   const h={Range:`bytes=${a}-${b}`};if(!S.key)h.Authorization='Bearer '+await auth();
   const r=await fetch(u,{headers:h});if(!r.ok)throw new Error('Drive '+r.status);return new U(await r.arrayBuffer())}
 function stop(){if(!G)return;G.dead=true;if(G.pump)G.pump.dead=true;try{URL.revokeObjectURL(G.url)}catch(e){}G=null}
-async function start(f,v,t0,pref){stop();
+async function start(f,v,t0,pref,hk={}){stop();
   const MS=window.MediaSource||window.ManagedMediaSource,g=G={dead:false,sk:0,rst:true,ini:null};
   const first=new Promise((ok,no)=>{g.ok=ok;g.no=no});
   /* cabeçalho */
@@ -425,16 +430,18 @@ async function start(f,v,t0,pref){stop();
     if(h.id===0x1549A966)kids(b,s,e,(i,s2,e2)=>{if(i===0x2AD7B1)tcs=uint(b,s2,e2);else if(i===0x4489)dur=flt(b,s2,e2)});
     else if(h.id===0x114D9B74)kids(b,s,e,(i,s2,e2)=>{if(i===0x4DBB){let id,ps;kids(b,s2,e2,(j,s3,e3)=>{if(j===0x53AB)id=uint(b,s3,e3);else if(j===0x53AC)ps=uint(b,s3,e3)});if(id===0x1C53BB6B)cuesAt=seg+ps}});
     else if(h.id===0x1654AE6B)kids(b,s,e,(i,s2,e2)=>{if(i!==0xAE)return;const t={};kids(b,s2,e2,(j,s3,e3)=>{
-      if(j===0xD7)t.n=uint(b,s3,e3);else if(j===0x83)t.type=uint(b,s3,e3);else if(j===0x86)t.codec=String.fromCharCode(...b.subarray(s3,e3));
+      if(j===0xD7)t.n=uint(b,s3,e3);else if(j===0x22B59C)t.lang=String.fromCharCode(...b.subarray(s3,e3)).replace(/\0/g,'');else if(j===0x22B59D)t.bcp=String.fromCharCode(...b.subarray(s3,e3)).replace(/\0/g,'');else if(j===0x536E)t.name=new TextDecoder().decode(b.subarray(s3,e3));else if(j===0x55AA)t.frc=uint(b,s3,e3);else if(j===0x83)t.type=uint(b,s3,e3);else if(j===0x86)t.codec=String.fromCharCode(...b.subarray(s3,e3));
       else if(j===0x63A2)t.cp=b.slice(s3,e3);else if(j===0x6D80)kids(b,s3,e3,(k,s4,e4)=>{if(k===0x6240)kids(b,s4,e4,(l,s5,e5)=>{if(l===0x5034)kids(b,s5,e5,(m,s6,e6)=>{if(m===0x4254)t.ca=uint(b,s6,e6);else if(m===0x4255)t.cs=b.slice(s6,e6)})})});else if(j===0x23E383)t.dd=uint(b,s3,e3)/1e6;
       else if(j===0xE0)kids(b,s3,e3,(k,s4,e4)=>{if(k===0xB0)t.W=uint(b,s4,e4);else if(k===0xBA)t.H=uint(b,s4,e4)});
       else if(j===0xE1)kids(b,s3,e3,(k,s4,e4)=>{if(k===0xB5)t.sr=flt(b,s4,e4);else if(k===0x9F)t.ch=uint(b,s4,e4)})});T.push(t)});
     p=s+h.sz}
   if(clus1<0)throw new Error('cabeçalho MKV demasiado grande');
-  let vt=T.find(t=>t.type===1),at=(pref==='aac'&&T.find(t=>t.type===2&&/^A_AAC/.test(t.codec)))||T.find(t=>t.type===2&&/^A_(EAC3|AAC)/.test(t.codec))||T.find(t=>t.type===2),dd={};T.forEach(t=>{if(t.dd)dd[t.n]=t.dd;if(t.ca===3&&t.cs)t.strip=t.cs});
+  let vt=T.find(t=>t.type===1),at=(hk.aud&&T.find(t=>t.type===2&&t.n===hk.aud))||(pref==='aac'&&T.find(t=>t.type===2&&/^A_AAC/.test(t.codec)))||(!pref&&hk.pa&&T.find(t=>t.type===2&&/^A_(EAC3|AAC)/.test(t.codec)&&hk.lb(t)===hk.pa))||T.find(t=>t.type===2&&/^A_(EAC3|AAC)/.test(t.codec))||T.find(t=>t.type===2),dd={};T.forEach(t=>{if(t.dd)dd[t.n]=t.dd;if(t.ca===3&&t.cs)t.strip=t.cs});
   if([vt,at].some(t=>t&&t.ca===0))throw new Error('pista comprimida (zlib), não suportado');
   if(!vt||vt.codec!=='V_MPEG4/ISO/AVC'||!vt.cp)throw new Error('vídeo não é H.264');
   if(!at||!/^A_(EAC3|AAC)/.test(at.codec))throw new Error('áudio '+(at?at.codec:'?')+' não suportado');
+  const AS=t=>/^A_(EAC3|AAC)/.test(t.codec),SM=new Map(T.filter(t=>t.type===17&&/^S_TEXT\/(UTF8|ASCII|SSA|ASS)/.test(t.codec)).map(t=>[t.n,t]));
+  hk.tracks&&hk.tracks({aud:T.filter(t=>t.type===2).map(t=>({n:t.n,codec:t.codec,lang:t.lang,bcp:t.bcp,name:t.name,ok:AS(t),cur:t===at})),sub:T.filter(t=>t.type===17).map(t=>({n:t.n,codec:t.codec,lang:t.lang,bcp:t.bcp,name:t.name,frc:t.frc===1,ok:SM.has(t.n)}))});
   const eac=at.codec==='A_EAC3',fdur=vt.dd||1000/23.976,D=Math.round(4*fdur);
   const vm=`video/mp4; codecs="avc1.${[1,2,3].map(i=>vt.cp[i].toString(16).padStart(2,'0')).join('')}"`,am=eac?'audio/mp4; codecs="ec-3"':'audio/mp4; codecs="mp4a.40.2"';
   if(!MS.isTypeSupported(vm)||!MS.isTypeSupported(am))throw new Error('o browser não suporta '+(MS.isTypeSupported(vm)?am:vm));
@@ -454,7 +461,8 @@ async function start(f,v,t0,pref){stop();
   const trim=async()=>{const c=v.currentTime-60;if(c>10)for(const s of[vsb,asb])if(s.buffered.length&&s.buffered.start(0)<c-5)await rm(s,0,c)};
   const emit=async(pm,out,vs,as)=>{if(pm.dead)return;
     const fx=(x,t)=>t.strip?{...x,d:cat(t.strip,x.d)}:x,hx=d=>[...d.slice(0,12)].map(x=>x.toString(16).padStart(2,'0')).join(' ');
-    if(!g.ini&&eac){const c=T.filter(t=>t.type===2&&t.codec==='A_EAC3').find(c=>{const x=out.find(y=>y.tr===c.n);if(!x)return false;const d=fx(x,c).d;return d[0]===0x0B&&d[1]===0x77});if(c)at=c}
+    if(hk.sub)for(const x of out){const t=SM.get(x.tr);if(!t)continue;const u=sub(fx(x,t).d,t.codec);if(u)hk.sub(x.tr,x.ts/1000,(x.ts+(x.bd||3000))/1000,u)}
+    if(!g.ini&&eac&&!hk.aud){const c=T.filter(t=>t.type===2&&t.codec==='A_EAC3').find(c=>{const x=out.find(y=>y.tr===c.n);if(!x)return false;const d=fx(x,c).d;return d[0]===0x0B&&d[1]===0x77});if(c){at=c;hk.cur&&hk.cur(c.n)}}
     const V=out.filter(x=>x.tr===vt.n).map(x=>fx(x,vt)),A=out.filter(x=>x.tr===at.n).map(x=>fx(x,at));
     if(!g.ini){if(!A.length)return;let ent;
       if(eac){const d=A[0].d;if(d[0]!==0x0B||d[1]!==0x77)throw new Error('áudio não é E-AC-3. Pistas de áudio: '+T.filter(t=>t.type===2).map(c=>{const x=out.find(y=>y.tr===c.n);return 'nº'+c.n+' '+c.codec+(c.ca!==undefined?' compr='+c.ca:'')+(x?' bloco['+x.d.length+'B]='+hx(x.d):' (sem bloco no 1º cluster)')}).join(' | '));
@@ -487,6 +495,41 @@ async function start(f,v,t0,pref){stop();
   v.onseeking=()=>{const t=v.currentTime,r=v.buffered;for(let i=0;i<r.length;i++)if(r.start(i)<=t&&r.end(i)>t+1)return;reseek(t)}}
 return{ok,start,stop}})();
 
+/* ---- áudio e legendas ---- */
+const TK={a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,pref:'',si:-1};
+const LB={fre:'fra',ger:'deu',chi:'zho',dut:'nld',gre:'ell',cze:'ces',rum:'ron',per:'fas'};
+const tl=t=>{let c=String(t.bcp||t.lang||'').replace(/\0/g,'').toLowerCase();if(!c||c==='und')return'';c=LB[c]||c;try{const n=new Intl.DisplayNames(['pt'],{type:'language'}).of(c);return n?n[0].toUpperCase()+n.slice(1):c}catch(e){return c.toUpperCase()}};
+const tn=(t,i,k)=>[tl(t),t.name&&t.name.toLowerCase()!==tl(t).toLowerCase()?t.name:'',t.frc?'forçadas':''].filter(Boolean).join(' · ')||k+' '+(i+1);
+const HK={aud:0,lb:tl,get pa(){return S.lp&&S.lp.a},
+  tracks(i){const v=$('#vid');TK.mk=true;
+    if(TK.f===cur.id){i.aud.forEach(a=>{const o=TK.a.find(x=>x.n===a.n);if(o)o.cur=a.cur});return}
+    TK.f=cur.id;TK.a=i.aud;TK.s=i.sub;
+    TK.s.forEach(t=>{if(!t.ok)return;const e=document.createElement('track');e.kind='subtitles';e.label=tn(t,0,'Legenda');v.appendChild(e);e.track.mode='hidden';t.tt=e.track;TK.tt[t.n]=t.tt});
+    TK.pd=true;const ps=S.lp&&S.lp.s,j=ps?TK.s.findIndex(t=>t.ok&&tl(t)===ps):-1;if(j>=0)setSub(j);trkBtn()},
+  cur(n){TK.a.forEach(x=>x.cur=x.n===n)},
+  sub(n,a,b,x){const t=TK.tt[n];if(!t)return;const k=n+'|'+a.toFixed(2)+'|'+x;if(TK.seen.has(k))return;TK.seen.add(k);try{t.addCue(new VTTCue(a,b,x))}catch(_){}}};
+function tkReset(){const v=$('#vid');v.querySelectorAll('track').forEach(e=>e.remove());Object.assign(TK,{a:[],s:[],tt:{},seen:new Set(),f:null,mk:false,pd:false,pref:'',si:-1});HK.aud=0;$('#tk').style.display='none';$('#tm').classList.remove('on')}
+function trkBtn(){$('#tk').style.display=TK.a.length>1||TK.s.length?'':'none'}
+function nativeTracks(v){if(TK.mk)return;
+  TK.a=v.audioTracks?[...v.audioTracks].map(t=>({nat:t,lang:t.language,name:t.label,ok:true,cur:t.enabled})):[];
+  TK.s=[...v.textTracks].filter(t=>/^(subtitles|captions|forced)$/.test(t.kind)).map(t=>({tt:t,lang:t.language,name:t.label,ok:true}));
+  TK.si=TK.s.findIndex(x=>x.tt.mode==='showing');
+  if(!TK.pd&&(TK.a.length||TK.s.length)){TK.pd=true;const pa=S.lp&&S.lp.a,ps=S.lp&&S.lp.s;let j=pa?TK.a.findIndex(t=>tl(t)===pa):-1;if(j>=0&&!TK.a[j].cur)setAud(j);j=ps?TK.s.findIndex(t=>tl(t)===ps):-1;if(j>=0)setSub(j)}
+  trkBtn()}
+function setSub(i){const t=TK.s[i];if(i>=0&&!(t&&t.ok))return;TK.si=i;TK.s.forEach((x,j)=>{if(x.tt)x.tt.mode=j===i?'showing':'hidden'});S.lp={...S.lp,s:t?tl(t):''};save();trkRender()}
+async function setAud(i){const t=TK.a[i];if(!t||!t.ok||t.cur)return;const v=$('#vid');
+  if(!TK.mk){[...v.audioTracks].forEach(x=>x.enabled=x===t.nat);TK.a.forEach(x=>x.cur=x===t)}
+  else{const f=cur,prev=(TK.a.find(x=>x.cur)||{}).n;persist();const t0=v.currentTime,was=!v.paused,l=$('#ld');
+    l.style.display='flex';l.textContent='A mudar o áudio…';
+    for(const n of[t.n,prev]){try{HK.aud=n;await MKV.start(f,v,t0,TK.pref,HK);break}catch(e){if(cur!==f)return;if(n===t.n)toast('Esta pista não é compatível: '+e.message)}}
+    if(cur!==f)return;TK.a.forEach(x=>x.cur=x.n===HK.aud);l.style.display='none';if(was)v.play().catch(()=>{})}
+  S.lp={...S.lp,a:tl(t)};save();trkRender()}
+function trkMenu(){if($('#tm').classList.toggle('on'))trkRender()}
+function trkRender(){const row=(on,fn,txt,x)=>`<button class="${on?'on':''}${x?' x':''}" onclick="${fn}">${on?'✓ ':''}${esc(txt)}</button>`;
+  $('#tm').innerHTML=(TK.a.length?'<h4>ÁUDIO</h4>'+TK.a.map((t,i)=>row(t.cur,`setAud(${i})`,tn(t,i,'Faixa')+(t.ok?'':' (codec não suportado)'),!t.ok)).join(''):'')
+   +(TK.s.length?'<h4>LEGENDAS</h4>'+row(TK.si<0,'setSub(-1)','Desligadas')+TK.s.map((t,i)=>row(TK.si===i,`setSub(${i})`,tn(t,i,'Legenda')+(t.ok?'':' (formato não suportado)'),!t.ok)).join(''):'')}
+$('#pl').addEventListener('click',e=>{if(!e.target.closest('#tm,#tk'))$('#tm').classList.remove('on')});
+
 /* ---- download + play ---- */
 async function blobOf(f,tag){const r=await api(`files/${f.id}?alt=media`);const rd=r.body.getReader(),ch=[];let got=0;
   for(;;){const{done,value}=await rd.read();if(done)break;ch.push(value);got+=value.length;
@@ -498,16 +541,16 @@ async function dl(id){const f=byId(id);
   toast('A descarregar '+title(f.name)+'… (pode demorar)');
   try{const b=await blobOf(f,'A descarregar');const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f.name;a.click();toast('Download concluído')}catch(e){toast(e.message)}}
 let cur=null,lastSave=0,nxt=null,mkErr='';
-async function play(id){const f=byId(id);MKV.stop();mkErr='';cur=f;const v=$('#vid');v.style.display='none';v.removeAttribute('src');
+async function play(id){const f=byId(id);MKV.stop();tkReset();mkErr='';cur=f;const v=$('#vid');v.style.display='none';v.removeAttribute('src');
   const lib=S.libs.find(l=>l.id===f.lib),eps=lib&&lib.type==='series'&&f.show?showsOf(lib)[f.show]:[];
   nxt=eps[eps.findIndex(e=>e.id===id)+1]||null;$('#nx').style.display=nxt?'block':'none';
   $('#pt').textContent=(f.show?f.show+' · ':'')+title(f.name);$('#ifr')?.remove();$('#ld').style.pointerEvents='none';$('#ld').style.display='flex';$('#ld').textContent='A carregar…';$('#pl').classList.add('on');
   try{const p=P(id);let src,mkv=false;
-    if(/\.mkv$/i.test(f.name)&&MKV.ok()){try{$('#ld').textContent='A preparar o MKV…';const t0=!p.w&&p.t>5?p.t:0;try{await MKV.start(f,v,t0)}catch(e){if(!/E-AC-3/.test(e.message))throw e;console.warn('EAC3 falhou, a tentar AAC:',e.message);await MKV.start(f,v,t0,'aac');toast('A usar a pista AAC: a pista EAC3 deste ficheiro não é compatível')}mkv=true}catch(e){console.warn('MKV',e);mkErr=e.message;toast('Remux MKV falhou: '+e.message+'. A usar o método antigo.')}if(cur!==f)return}
+    if(/\.mkv$/i.test(f.name)&&MKV.ok()){try{$('#ld').textContent='A preparar o MKV…';const t0=!p.w&&p.t>5?p.t:0;try{await MKV.start(f,v,t0,'',HK)}catch(e){if(!/E-AC-3/.test(e.message))throw e;console.warn('EAC3 falhou, a tentar AAC:',e.message);TK.pref='aac';await MKV.start(f,v,t0,'aac',HK);toast('A usar a pista AAC: a pista EAC3 deste ficheiro não é compatível')}mkv=true}catch(e){console.warn('MKV',e);mkErr=e.message;tkReset();toast('Remux MKV falhou: '+e.message+'. A usar o método antigo.')}if(cur!==f)return}
     if(!mkv){if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}v.src=src}
     if(mkv)v.play().catch(()=>{});
-    $('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none'};setTimeout(()=>{if(cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
-    v.onloadedmetadata=()=>{if(!p.w&&p.t>5&&p.t<v.duration-10)v.currentTime=p.t;v.play().catch(()=>{})};
+    $('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none';nativeTracks(v)};setTimeout(()=>{if(cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
+    v.onloadedmetadata=()=>{if(!p.w&&p.t>5&&p.t<v.duration-10)v.currentTime=p.t;nativeTracks(v);v.play().catch(()=>{})};
     v.onerror=async()=>{v.style.display='none';const ce=v.error?v.error.code:0;let why='O browser não conseguiu reproduzir este ficheiro.',mk=false;
       try{const ac=new AbortController();const r=await fetch(direct(f),{signal:ac.signal});
         if(r.ok&&(/matroska|x-msvideo|avi/i.test(r.headers.get('content-type')||'')||/\.(mkv|avi|wmv|flv)$/i.test(f.name))){ac.abort();mk=true;why='Este ficheiro é MKV/AVI e os browsers não o reproduzem (o Safari nunca). Abre-o num player externo (VLC, IINA ou Infuse), que toca tudo, ou converte-o para MP4.'}
