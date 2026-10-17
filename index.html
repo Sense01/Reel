@@ -134,7 +134,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const enc=s=>encodeURIComponent(s).replace(/'/g,'%27');
 let S={};try{S=JSON.parse(localStorage.getItem('reel')||'{}')}catch(e){}
-S.cid??='';S.key??='';S.tmdb??='';S.art??={};if(S.artv!==5){S.art={};S.artv=5}delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
+S.cid??='';S.key??='';S.tmdb??='';S.art??={};if(S.artv!==6){S.art={};S.artv=6}delete S.emb;S.libs??=[];S.cache??={};S.prog??={};
 const save=()=>localStorage.setItem('reel',JSON.stringify(S));
 let V={lib:null,show:null,home:true,season:null};
 const toast=t=>{const m=$('#msg');m.textContent=t;m.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>m.style.display='none',3500)};
@@ -181,9 +181,13 @@ const showsOf=lib=>{const o={};(S.cache[lib.id]||[]).forEach(f=>(o[f.show||'Outr
 const nextUp=eps=>eps.find(e=>!P(e.id).w&&P(e.id).t>5)||eps.find(e=>!P(e.id).w)||eps[0];
 
 /* ---- capas (TMDB) ---- */
+const cj=t=>{const o=t;let w=0;t=t.replace(/^www\s+\S+\s+(com|net|org|to|cc|pt|tv|info|me|io)\b[\s\-–—:]*/i,'');
+  if(/^(watch|download|stream)\s+(free|online|full|now|hd)\b/i.test(t)){t=t.replace(/^(watch|download|stream)\s+((free|online|full|now|hd)\s+)*/i,'');w=1}
+  if(w||/\sfull\s+(movie|film)$/i.test(t))t=t.replace(/\s+(full\s+)?(movie|film)(\s+(online|free|hd|streaming|stream))*$/i,'');
+  t=t.trim();return t.length>1?t:o};
 const clean=n=>{const s=n.replace(/\.[^.]+$/,'').replace(/[._]+/g,' ').replace(/\[[^\]]*\]|\([^)]*\)/g,' ').replace(/\s+/g,' ').trim();
   let i=s.slice(3).search(/(^|[\s-])((19|20)\d{2}|\d{3,4}p|Full ?HD|FHD|UHD|4K|HDR|MULTi|VF[FI2]?|VOSTFR|TRUEFRENCH|FRENCH|DUAL|DUBLADO|LEGENDADO|PT-?(PT|BR)|WEB-?Rip|WEB-?DL|WEB|Blu-?Ray|BDRip|HDRip|DVDRip|HDTV|REMUX|EXTENDED|REPACK|PROPER|[x×]26[45]|H ?26[45]|HEVC|S\d{1,2}E\d{1,3})(?=[\s-]|$)/i);i=i<0?s.length:i+3;
-  return{t:s.slice(0,i).replace(/[\s\-–—:]+$/,'').trim(),y:(s.slice(i).match(/^\W*((19|20)\d{2})(?=\W|$)/)||[])[1]||''}};
+  return{t:cj(s.slice(0,i).replace(/[\s\-–—:]+$/,'').trim()),y:(s.slice(i).match(/^\W*((19|20)\d{2})(?=\W|$)/)||[])[1]||''}};
 const artKey=f=>{const l=S.libs.find(x=>x.id===f.lib),sr=l&&l.type==='series'&&f.show,c=clean(sr?f.show+'.x':f.name);return(sr?'t':'m')+'|'+c.t+'|'+(sr?'':c.y)};
 const th=(f,w=640,raw)=>{const a=!raw&&f&&S.art[artKey(f)];if(!a||a.n)return thOld(f,w);
   if(a.u)return`<img src="${esc(a.u)}" style="filter:blur(22px) brightness(.55);transform:scale(1.3)" onerror="this.remove()"><img src="${esc(a.u)}" style="object-fit:contain" onerror="this.remove()">`;
@@ -203,9 +207,14 @@ const nz=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[^a-z0-9]/g,''
 const wtk=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(/[^a-z0-9]+/).filter(Boolean);
 const wcov=(q,t)=>{const a=wtk(q),b=new Set(wtk(t));return a.length?a.filter(w=>b.has(w)).length/a.length:0};
 async function jf(u,ms=10000){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),ms);try{const r=await fetch(u,{signal:ac.signal});if(!r.ok)throw new Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(t)}}
+function imj(q){return new Promise((res,rej)=>{const k=q.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]/g,'').trim().replace(/\s+/g,'_');if(!k)return rej(new Error('imdb'));
+  const n='imdb$'+k,sc=document.createElement('script'),t=setTimeout(()=>{delete window[n];sc.remove();rej(new Error('imdb timeout'))},10000);
+  window[n]=d=>{clearTimeout(t);delete window[n];sc.remove();res(d)};sc.onerror=()=>{clearTimeout(t);delete window[n];sc.remove();rej(new Error('imdb indisponível'))};
+  sc.src='https://sg.media-imdb.com/suggests/'+k[0]+'/'+k+'.json';document.head.appendChild(sc)})}
 async function imdb(q,y,t){
-  const d=await jf('https://v3.sg.media-imdb.com/suggestion/x/'+encodeURIComponent(q.toLowerCase())+'.json'),ok=t==='t'?['tvSeries','tvMiniSeries']:['movie','tvMovie','video'],want=wtk(q).join(' ');
-  const m=(d.d||[]).map((x,i)=>({x,i})).filter(({x})=>x.i&&x.i.imageUrl&&/^tt/.test(x.id||'')&&ok.includes(x.qid)&&wcov(q,x.l)>=.75&&wcov(x.l,q)>=.5);
+  let d;try{d=await jf('https://v3.sg.media-imdb.com/suggestion/x/'+encodeURIComponent(q.toLowerCase())+'.json')}catch(e){d=await imj(q)}
+  const ok=t==='t'?/^(tvSeries|tvMiniSeries|TV series|TV mini-series)$/i:/^(movie|feature|tvMovie|TV movie|video)$/i,want=wtk(q).join(' ');
+  const m=(d.d||[]).map((x,i)=>({x,i})).filter(({x})=>x.i&&x.i.imageUrl&&/^tt/.test(x.id||'')&&ok.test(x.qid||x.q||'')&&wcov(q,x.l)>=.75&&wcov(x.l,q)>=.5);
   const sc=({x,i})=>(wtk(x.l).join(' ')===want?0:100)+(y&&t==='m'?(+x.y===+y?0:Math.abs((+x.y||0)-y)<=1?10:60):0)+i;
   m.sort((a,b)=>sc(a)-sc(b));
   return m[0]?m[0].x.i.imageUrl.replace(/\._V1_.*\.(jpg|png)$/i,'._V1_UY600_.$1'):''}
@@ -247,7 +256,7 @@ async function covers(force){if(cvB)return;if(force)for(const k in S.art)if(S.ar
   cvB=false;if(!coverMsg.startsWith('erro'))coverMsg=cstat();if(idle())render2()}
 
 /* ---- UI pieces ---- */
-function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v9 · capas auto</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
+function nav(){$('#nv').innerHTML=`<span class="logo" onclick="go()">REEL<small style="font:500 10px Inter,sans-serif;letter-spacing:0;color:#a0a0aa;margin-left:6px">v10 · capas auto</small></span><nav><a class="${V.home?'on':''}" onclick="go()">Início</a>${S.libs.map(l=>`<a class="${V.lib===l.id?'on':''}" onclick="go('${l.id}')">${esc(l.name)}</a>`).join('')}</nav><button class="ib" title="Nova biblioteca" onclick="newLib()">+</button><button class="ib" title="Definições" onclick="settings()">⚙</button>`}
 addEventListener('scroll',()=>$('#nv').classList.toggle('s',scrollY>40));
 function fcard(f,sub){return`<div class="c" tabindex="0" style="${hv(f.name)}" onclick="play('${f.id}')">${th(f)}${P(f.id).w?'<span class="bd">✓ VISTO</span>':''}<div class="act"><button title="Marcar visto/por ver" onclick="event.stopPropagation();mark('${f.id}')">✓</button><button title="Descarregar" onclick="event.stopPropagation();dl('${f.id}')">↓</button></div><div class="ct">${esc(title(f.name))}<small>${esc(sub||status(f.id))}</small></div><div class="pb"><i style="width:${pct(f.id)}%"></i></div></div>`}
 function scard(lib,name,eps){const w=eps.filter(e=>P(e.id).w).length,t=eps.find(e=>e.th)||eps[0];
