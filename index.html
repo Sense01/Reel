@@ -380,7 +380,7 @@ function mark(id){const p=S.prog[id]=P(id);p.w=!p.w;if(!p.w)p.t=0;p.at=Date.now(
 
 /* ---- MKV → MP4 fragmentado em tempo real (remux no browser, sem recodificar) ---- */
 const MKV=(()=>{
-const U=Uint8Array,CL=0x1F43B675,CH=6<<20,MX=null;
+const U=Uint8Array,CL=0x1F43B675,CH=3<<20,AH=20,MX=null;
 const cat=(...a)=>{const o=new U(a.reduce((s,x)=>s+x.length,0));let p=0;for(const x of a){o.set(x,p);p+=x.length}return o};
 const i32=n=>new U([n>>>24,n>>>16&255,n>>>8&255,n&255]),i16=n=>new U([n>>8&255,n&255]),st=s=>new U([...s].map(c=>c.charCodeAt(0)));
 const box=(t,...c)=>{const d=cat(...c);return cat(i32(8+d.length),st(t),d)};
@@ -465,7 +465,7 @@ async function start(f,v,t0,pref,hk={}){stop();
   const rm=(s,a,z)=>new Promise(res=>{s.onupdateend=res;s.remove(a,z)});
   const clr=async s=>{try{s.abort()}catch(e){}await rm(s,0,1e9)};
   const ahead=()=>{const r=v.buffered,t=v.currentTime;for(let i=0;i<r.length;i++)if(r.start(i)<=t+.5&&r.end(i)>=t)return r.end(i)-t;return 0};
-  const trim=async()=>{const c=v.currentTime-60;if(c>10)for(const s of[vsb,asb])if(s.buffered.length&&s.buffered.start(0)<c-5)await rm(s,0,c)};
+  const trim=async()=>{const c=v.currentTime-30;if(c>10)for(const s of[vsb,asb])if(s.buffered.length&&s.buffered.start(0)<c-5)await rm(s,0,c)};
   const emit=async(pm,out,vs,as)=>{if(pm.dead)return;
     const fx=(x,t)=>t.strip?{...x,d:cat(t.strip,x.d)}:x,hx=d=>[...d.slice(0,12)].map(x=>x.toString(16).padStart(2,'0')).join(' ');
     if(hk.sub)for(const x of out){try{const t=SM.get(x.tr);if(!t)continue;const u=sub(fx(x,t).d,t.codec);if(u)hk.sub(x.tr,x.ts/1000,(x.ts+(x.bd||3000))/1000,u)}catch(e){}}
@@ -488,7 +488,7 @@ async function start(f,v,t0,pref,hk={}){stop();
   const run=async(pm,from)=>{let buf=new U(0),bo=from,p=from,eof=false;const vs={n:0,t0:null},as={};
     const need=async e=>{while(bo+buf.length<e&&!eof&&!pm.dead){const a=bo+buf.length;if(a>=f.size){eof=true;break}buf=cat(buf,await rng(f,a,Math.min(a+CH,f.size)-1))}};
     while(!pm.dead){
-      while(!pm.dead&&ahead()>40)await new Promise(r=>setTimeout(r,400));
+      while(!pm.dead&&ahead()>AH)await new Promise(r=>setTimeout(r,400));
       await need(p+16);if(pm.dead)return;
       const h=eh(buf,p-bo);if(!h||h.sz<0)break;const tot=h.hl+h.sz;
       if(h.id===CL){await need(p+tot);if(pm.dead)return;const out=[];blocks(buf,p-bo+h.hl,p-bo+tot,tcs,out,dd);await emit(pm,out,vs,as)}
@@ -559,7 +559,7 @@ async function play(id){const f=byId(id);MKV.stop();tkReset();mkErr='';cur=f;con
   $('#pt').textContent=(f.show?f.show+' · ':'')+title(f.name);$('#ifr')?.remove();$('#ld').style.pointerEvents='none';$('#ld').style.display='flex';$('#ld').textContent='A carregar…';$('#pl').classList.add('on');
   try{const p=P(id);let src,mkv=false;
     if(/\.mkv$/i.test(f.name)&&MKV.ok()){try{$('#ld').textContent='A preparar o MKV…';const t0=!p.w&&p.t>5?p.t:0;try{await MKV.start(f,v,t0,'',HK)}catch(e){if(!/E-AC-3/.test(e.message))throw e;console.warn('EAC3 falhou, a tentar AAC:',e.message);TK.pref='aac';await MKV.start(f,v,t0,'aac',HK);toast('A usar a pista AAC: a pista EAC3 deste ficheiro não é compatível')}mkv=true}catch(e){console.warn('MKV',e);mkErr=e.message;tkReset();toast('Remux MKV falhou: '+e.message+'. A usar o método antigo.')}if(cur!==f)return}
-    if(!mkv){if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{const b=await blobOf(f,'A carregar');if(cur!==f)return;src=URL.createObjectURL(b)}v.src=src}
+    if(!mkv){if(S.key)src=mediaUrl(f.id);else if(canSW()){await prepSW();src=swUrl(f)}else{src=await extUrl(f.id);if(cur!==f)return}v.src=src}
     if(mkv){v.play().catch(()=>{});try{mkTracks()}catch(e){console.warn(e)}}
     $('#ld').style.display='none';v.style.display='block';v.onloadeddata=()=>{$('#ld').style.display='none';nativeTracks(v)};setTimeout(()=>{if(!mkv&&cur===f&&v.readyState<2&&!v.error)diag(f)},15000);
     v.onloadedmetadata=()=>{if(!p.w&&p.t>5&&p.t<v.duration-10)v.currentTime=p.t;nativeTracks(v);v.play().catch(()=>{})};
