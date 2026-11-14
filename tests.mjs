@@ -1086,3 +1086,262 @@ test('Extended video formats & server.js inferMime / transcode auth guard', asyn
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('H.264 MKV fixes: High10/4:2:2 detection, avc3, Annex-B -> AVCC, ContentEncodingScope & keyframe sync', async () => {
+  const { api, drain } = loadAppContext();
+  await drain();
+  const { MKV } = api;
+  const ChromeMS = { isTypeSupported: m => /(avc1|avc3|mp4a)/.test(m) };
+
+  // 1. Normal 8-bit 4:2:0 High@L4.1 accepted
+  const avcC_8b = new Uint8Array([
+    1, 0x64, 0x00, 0x29, 0xff, 0xe1, 0, 4, 0x67, 0x64, 0x00, 0x29, 1, 0, 2, 0x68, 0xeb,
+  ]);
+  const info8 = MKV.avcInfo(avcC_8b);
+  assert.equal(info8.prof, 100);
+  assert.equal(info8.lvl, 41);
+  assert.equal(info8.lenSz, 4);
+  assert.equal(info8.nSps, 1);
+  assert.equal(info8.chroma, 1);
+  assert.equal(info8.bd, 8);
+  assert.equal(info8.hex, '640029');
+  const p8 = MKV.pickVidCfg({ codec: 'V_MPEG4/ISO/AVC', cp: avcC_8b }, ChromeMS, false);
+  assert.equal(p8.err, '');
+  assert.equal(p8.cfg.tag, 'avc1');
+  assert.equal(p8.cfg.lenSz, 4);
+  assert.equal(p8.cfg.mime, 'video/mp4; codecs="avc1.640029"');
+
+  // Extended 8-bit 4:2:0 (post-PPS bytes present: chroma=1, lumaBd=8, chromaBd=8) still accepted
+  const avcC_ext8 = new Uint8Array([...avcC_8b, 0xfd, 0xf8, 0xf8, 0]);
+  assert.equal(MKV.avcInfo(avcC_ext8).bd, 8);
+  assert.equal(MKV.pickVidCfg({ codec: 'V_MPEG4/ISO/AVC', cp: avcC_ext8 }, ChromeMS, false).cfg.tag, 'avc1');
+
+  // nSps === 0 prefers avc3
+  const avcC_inband = new Uint8Array([1, 0x4d, 0x40, 0x1f, 0xff, 0xe0, 0]);
+  const pInband = MKV.pickVidCfg({ codec: 'V_MPEG4/ISO/AVC', cp: avcC_inband }, ChromeMS, false);
+  assert.equal(pInband.cfg.tag, 'avc3');
+  assert.equal(pInband.cfg.mime, 'video/mp4; codecs="avc3.4d401f"');
+
+  // High 10 (profile_idc=110), High 10 via extended bd=10, and High 4:2:2 (profile_idc=122) reject with hiColor=true unless forced
+  const avcC_10b = new Uint8Array([...avcC_8b]);
+  avcC_10b[1] = 110;
+  const avcC_ext10 = new Uint8Array([...avcC_8b, 0xfd, 0xfa, 0xfa, 0]);
+  const avcC_422 = new Uint8Array([...avcC_8b]);
+  avcC_422[1] = 122;
+  for (const cpHi of [avcC_10b, avcC_ext10, avcC_422]) {
+    const rej = MKV.pickVidCfg({ codec: 'V_MPEG4/ISO/AVC', cp: cpHi }, ChromeMS, false);
+    assert.equal(rej.cfg, null);
+    assert.equal(rej.hiColor, true);
+    assert.ok(rej.err);
+    const forced = MKV.pickVidCfg({ codec: 'V_MPEG4/ISO/AVC', cp: cpHi }, ChromeMS, true);
+    assert.ok(forced.cfg);
+    assert.equal(forced.cfg.tag, 'avc1');
+  }
+
+  // 2. MKV.normAvcSample: preserves >=256B AVCC NALU starting with 00 00 01, and normalizes Annex-B
+  const avccBig = new Uint8Array(4 + 260);
+  avccBig[0] = 0x00; avccBig[1] = 0x00; avccBig[2] = 0x01; avccBig[3] = 0x04; // BE length = 260
+  avccBig[4] = 0x65;
+  for (let i = 5; i < avccBig.length; i++) avccBig[i] = i & 0xff;
+  const kept = MKV.normAvcSample(avccBig, 4);
+  assert.deepEqual(Array.from(kept), Array.from(avccBig));
+
+  const annexB = new Uint8Array([
+    0x00, 0x00, 0x00, 0x01, 0x67, 0x64, 0x29,
+    0x00, 0x00, 0x01, 0x65, 0x88, 0x11, 0x22,
+  ]);
+  const norm = MKV.normAvcSample(annexB, 4);
+  assert.deepEqual(Array.from(norm), [
+    0x00, 0x00, 0x00, 0x03, 0x67, 0x64, 0x29,
+    0x00, 0x00, 0x00, 0x04, 0x65, 0x88, 0x11, 0x22,
+  ]);
+
+  // 3. Synthetic H.264 MKV end-to-end checks on MKV.start
+  const ebmlVint = len => {
+    if (len < 127) return [0x80 | len];
+    if (len < 16383) return [0x40 | (len >> 8), len & 0xff];
+    return [0x20 | (len >> 16), (len >> 8) & 0xff, len & 0xff];
+  };
+  const el = (idBytes, body) => new Uint8Array([...idBytes, ...ebmlVint(body.length), ...body]);
+  const concatU8 = arrs => {
+    const out = new Uint8Array(arrs.reduce((s, a) => s + a.length, 0));
+    let o = 0;
+    for (const a of arrs) { out.set(a, o); o += a.length; }
+    return out;
+  };
+  const u32be = n => new Uint8Array([(n >>> 24) & 0xff, (n >>> 16) & 0xff, (n >>> 8) & 0xff, n & 0xff]);
+  const str = s => Buffer.from(s, 'utf8');
+  const sbBlock = (trk, ptsRel, key, payload) => concatU8([
+    new Uint8Array([0x80 | trk, (ptsRel >> 8) & 0xff, ptsRel & 0xff, key ? 0x80 : 0x00]),
+    payload,
+  ]);
+  const buildH264Mkv = ({ cp, trackExtra = [], blocks }) => concatU8([
+    el([0x1a, 0x45, 0xdf, 0xa3], el([0x42, 0x82], str('matroska'))),
+    el([0x18, 0x53, 0x80, 0x67], concatU8([
+      el([0x15, 0x49, 0xa9, 0x66], el([0x2a, 0xd7, 0xb1], new Uint8Array([0x0f, 0x42, 0x40]))),
+      el([0x16, 0x54, 0xae, 0x6b], concatU8([
+        el([0xae], concatU8([
+          el([0xd7], new Uint8Array([1])),
+          el([0x83], new Uint8Array([1])),
+          el([0x86], str('V_MPEG4/ISO/AVC')),
+          el([0x23, 0xe3, 0x83], u32be(41708333)),
+          el([0xe0], concatU8([
+            el([0xb0], new Uint8Array([0x07, 0x80])),
+            el([0xba], new Uint8Array([0x04, 0x38])),
+          ])),
+          el([0x63, 0xa2], cp),
+          ...trackExtra,
+        ])),
+      ])),
+      el([0x1f, 0x43, 0xb6, 0x75], concatU8([
+        el([0xe7], new Uint8Array([0])),
+        ...blocks.map(b => el([0xa3], b)),
+      ])),
+    ])),
+  ]);
+
+  const makeRangeFetch = buf => async (_u, init = {}) => {
+    const m = /^bytes=(\d+)-(\d*)$/.exec(init.headers?.Range || init.headers?.range || '');
+    const s = m ? Number(m[1]) : 0;
+    const e = m && m[2] ? Math.min(buf.length - 1, Number(m[2])) : buf.length - 1;
+    const slice = buf.subarray(s, e + 1);
+    return new Response(slice, {
+      status: 206,
+      headers: { 'Content-Range': `bytes ${s}-${e}/${buf.length}`, 'Content-Length': String(slice.length) },
+    });
+  };
+  const containsBytes = (hay, needle) => {
+    outer: for (let i = 0; i <= hay.length - needle.length; i++) {
+      for (let j = 0; j < needle.length; j++) if (hay[i + j] !== needle[j]) continue outer;
+      return true;
+    }
+    return false;
+  };
+
+  // 3a. High 10 (10-bit) H.264 MKV sets hiColor + noNativeFallback + vSupported=false
+  const mkv10b = buildH264Mkv({
+    cp: avcC_10b,
+    blocks: [sbBlock(1, 0, true, new Uint8Array(24))],
+  });
+  const ctx10 = loadAppContext({ fetchMock: makeRangeFetch(mkv10b) });
+  await ctx10.drain();
+  ctx10.api.setToken('tok-test', Date.now() + 60000);
+  await assert.rejects(
+    ctx10.api.MKV.start({ id: 'AVC10', size: mkv10b.length }, ctx10.byIdMap.get('vid'), 0, '', {}),
+    err => err && err.hiColor === true && err.noNativeFallback === true && err.vSupported === false && err.vCodec === 'V_MPEG4/ISO/AVC'
+  );
+
+  // 3b. bzlib ContentCompAlgo=1 is rejected
+  const mkvBz = buildH264Mkv({
+    cp: avcC_8b,
+    trackExtra: [
+      el([0x6d, 0x80], el([0x62, 0x40], el([0x50, 0x34], el([0x42, 0x54], new Uint8Array([1]))))),
+    ],
+    blocks: [sbBlock(1, 0, true, new Uint8Array(24))],
+  });
+  const ctxBz = loadAppContext({ fetchMock: makeRangeFetch(mkvBz) });
+  await ctxBz.drain();
+  ctxBz.api.setToken('tok-test', Date.now() + 60000);
+  await assert.rejects(
+    ctxBz.api.MKV.start({ id: 'AVCBZ', size: mkvBz.length }, ctxBz.byIdMap.get('vid'), 0, '', {}),
+    err => err && err.fatalCodec === true
+  );
+
+  // 3c. ContentEncodingScope=2 + leading !key frame + Annex-B IDR + AVCC delta frame
+  const scope2Prefix = avcC_8b.slice(0, 4);
+  const leadingNonKey = new Uint8Array([0x00, 0x00, 0x00, 0x05, 0x41, 0xde, 0xad, 0xbe, 0xef]);
+  const idrAnnexB = new Uint8Array([0x00, 0x00, 0x00, 0x01, 0x65, 0x88, 0x11, 0x22, 0x33]);
+  const deltaAvcc = new Uint8Array([0x00, 0x00, 0x00, 0x05, 0x41, 0x9a, 0x44, 0x55, 0x66]);
+  const mkvSync = buildH264Mkv({
+    cp: avcC_8b.slice(4),
+    trackExtra: [
+      el([0x6d, 0x80], el([0x62, 0x40], concatU8([
+        el([0x50, 0x32], new Uint8Array([2])), // ContentEncodingScope=2 (CodecPrivate only)
+        el([0x50, 0x34], concatU8([
+          el([0x42, 0x54], new Uint8Array([3])), // Header stripping
+          el([0x42, 0x55], scope2Prefix),
+        ])),
+      ]))),
+    ],
+    blocks: [
+      sbBlock(1, 0, false, leadingNonKey),
+      sbBlock(1, 42, true, idrAnnexB),
+      sbBlock(1, 84, false, deltaAvcc),
+    ],
+  });
+
+  const ctxSync = loadAppContext({ fetchMock: makeRangeFetch(mkvSync) });
+  await ctxSync.drain();
+  ctxSync.api.setToken('tok-test', Date.now() + 60000);
+  const appendedVideoChunks = [];
+  class RecordingMediaSource {
+    static isTypeSupported(m) { return /avc1|mp4a/.test(m); }
+    constructor() {
+      this.readyState = 'closed';
+      this.duration = NaN;
+      this._listeners = new Map();
+    }
+    addEventListener(t, fn) {
+      if (!this._listeners.has(t)) this._listeners.set(t, []);
+      this._listeners.get(t).push(fn);
+      if (t === 'sourceopen') {
+        setTimeout(() => {
+          this.readyState = 'open';
+          for (const h of this._listeners.get('sourceopen') || []) h({ type: 'sourceopen' });
+        }, 0);
+      }
+    }
+    removeEventListener(t, fn) {
+      const a = this._listeners.get(t);
+      if (a) this._listeners.set(t, a.filter(x => x !== fn));
+    }
+    addSourceBuffer(mime) {
+      const sb = {
+        updating: false,
+        buffered: { length: 0, start: () => 0, end: () => 0 },
+        _listeners: new Map(),
+        addEventListener(t, fn) {
+          if (!this._listeners.has(t)) this._listeners.set(t, []);
+          this._listeners.get(t).push(fn);
+        },
+        removeEventListener(t, fn) {
+          const a = this._listeners.get(t);
+          if (a) this._listeners.set(t, a.filter(x => x !== fn));
+        },
+        appendBuffer(buf) {
+          this.updating = true;
+          if (/^video\//.test(mime)) appendedVideoChunks.push(new Uint8Array(buf));
+          setTimeout(() => {
+            this.updating = false;
+            for (const h of this._listeners.get('updateend') || []) h({ type: 'updateend' });
+          }, 0);
+        },
+        abort() {},
+        remove() {},
+      };
+      return sb;
+    }
+    endOfStream() { this.readyState = 'ended'; }
+  }
+  ctxSync.ctx.MediaSource = RecordingMediaSource;
+  const OrigURL = ctxSync.ctx.URL;
+  ctxSync.ctx.URL = class extends OrigURL {
+    static createObjectURL() { return 'blob:reel-test-mkv'; }
+    static revokeObjectURL() {}
+  };
+
+  await ctxSync.api.MKV.start({ id: 'AVCSYNC', size: mkvSync.length }, ctxSync.byIdMap.get('vid'), 0, '', {});
+  await new Promise(r => setTimeout(r, 40));
+
+  assert.ok(appendedVideoChunks.length >= 2, 'Expected init + media segments appended to video SourceBuffer');
+  assert.equal(containsBytes(appendedVideoChunks[0], avcC_8b), true, 'Scope=2 must restore CodecPrivate in init segment');
+  const mediaVid = concatU8(appendedVideoChunks.slice(1));
+  assert.equal(containsBytes(mediaVid, new Uint8Array([0xde, 0xad, 0xbe, 0xef])), false, 'Pre-IDR delta frame must be dropped');
+  assert.equal(containsBytes(mediaVid, scope2Prefix), false, 'Scope=2 ContentCompSettings must not be prepended to video blocks');
+  assert.equal(
+    containsBytes(mediaVid, new Uint8Array([0x00, 0x00, 0x00, 0x05, 0x65, 0x88, 0x11, 0x22, 0x33])),
+    true,
+    'Annex-B IDR must be normalized to 4-byte AVCC in mdat'
+  );
+  assert.equal(containsBytes(mediaVid, deltaAvcc), true, 'Trailing AVCC delta frame must be emitted');
+});

@@ -167,7 +167,7 @@ input,select{font:inherit;background:#0c0b11;color:#fff;border:1px solid #ffffff
 </div></div>
 
 <div id="pl">
-  <div id="pb"><button class="ib" onclick="closePlayer()" aria-label="Voltar">←</button><b id="pt"></b><button class="btn s" id="s51btn" style="padding:8px 18px;font-size:15px" onclick="s51Open()">Som 5.1</button><button class="btn s" id="tk" style="display:none;padding:8px 18px;font-size:15px" onclick="trkMenu()">Áudio e legendas</button><button class="btn s" id="nx" style="display:none;padding:8px 18px;font-size:15px" onclick="nextEp()">Próximo ▶</button></div><div id="tm"></div><div id="s51m" role="dialog" aria-label="Colunas 5.1"></div>
+  <div id="pb"><button class="ib" onclick="closePlayer()" aria-label="Voltar">←</button><b id="pt"></b><button class="btn s" id="altBtn" style="padding:8px 14px;font-size:14px" onclick="openPlayerHelp()">Imagem / Som?</button><button class="btn s" id="s51btn" style="padding:8px 18px;font-size:15px" onclick="s51Open()">Som 5.1</button><button class="btn s" id="tk" style="display:none;padding:8px 18px;font-size:15px" onclick="trkMenu()">Áudio e legendas</button><button class="btn s" id="nx" style="display:none;padding:8px 18px;font-size:15px" onclick="nextEp()">Próximo ▶</button></div><div id="tm"></div><div id="s51m" role="dialog" aria-label="Colunas 5.1"></div>
   <div id="ld"></div><video id="vid" controls style="display:none"></video>
 </div>
 <div id="msg"></div>
@@ -843,13 +843,73 @@ const CODEC_LABELS={
   'A_EAC3':'E-AC-3','A_AC3':'AC-3','A_DTS':'DTS','A_TRUEHD':'TrueHD','A_OPUS':'Opus','A_FLAC':'FLAC','A_VORBIS':'Vorbis','A_MPEG/L3':'MP3'
 };
 const codecLabel=c=>!c?'?':(CODEC_LABELS[c]||(/^A_AAC/.test(c)?'AAC':c));
+function avcInfo(cp){
+  if(!cp||cp.length<4)return null;
+  const prof=cp[1],compat=cp[2],lvl=cp[3],hex=[1,2,3].map(i=>cp[i].toString(16).padStart(2,'0')).join('');
+  if(cp.length<7){
+    const bd=prof===110?10:8,chroma=prof===122?2:(prof===244||prof===44)?3:1;
+    return{prof,compat,lvl,lenSz:4,nSps:1,nPps:1,chroma,bd,hex};
+  }
+  const lenSz=(cp[4]&3)+1,nSps=cp[5]&31;
+  let p=6;
+  for(let i=0;i<nSps;i++){if(p+2>cp.length)return{prof,compat,lvl,lenSz,nSps,nPps:0,chroma:1,bd:prof===110?10:8,hex};const n=(cp[p]<<8)|cp[p+1];p+=2+n;if(p>cp.length)return{prof,compat,lvl,lenSz,nSps,nPps:0,chroma:1,bd:prof===110?10:8,hex}}
+  let nPps=0;
+  if(p<cp.length){nPps=cp[p++];for(let i=0;i<nPps;i++){if(p+2>cp.length){p=cp.length;break}const n=(cp[p]<<8)|cp[p+1];p+=2+n;if(p>cp.length){p=cp.length;break}}}
+  let chroma=1,bd=8;
+  if((prof===100||prof===110||prof===122||prof===144||prof===244)&&p+3<=cp.length){
+    const c=cp[p]&3,bl=8+(cp[p+1]&7),bc=8+(cp[p+2]&7);
+    if(c>0)chroma=c;
+    bd=Math.max(bl,bc);
+  }
+  if(prof===110&&bd<10)bd=10;
+  if(prof===122&&chroma<2)chroma=2;
+  if((prof===244||prof===44)&&chroma<3)chroma=3;
+  return{prof,compat,lvl,lenSz,nSps,nPps,chroma,bd,hex};
+}
+function isAvccSample(d,lenSz){
+  if(!d||lenSz<1||lenSz>4||d.length<=lenSz)return false;
+  let p=0;
+  while(p<d.length){
+    if(p+lenSz>d.length)return false;
+    let n=0;for(let i=0;i<lenSz;i++)n=n*256+d[p+i];
+    if(n<=0||p+lenSz+n>d.length)return false;
+    if(p===0&&lenSz===4&&n===1&&d[0]===0&&d[1]===0&&d[2]===0&&d[3]===1)return false;
+    p+=lenSz+n;
+  }
+  return p===d.length;
+}
+function annexBToAvcc(d,lenSz){
+  if(!d||lenSz<1||lenSz>4||d.length<4)return d;
+  const starts=[];
+  for(let i=0;i+3<=d.length;){
+    if(d[i]===0&&d[i+1]===0&&(d[i+2]===1||(i+3<d.length&&d[i+2]===0&&d[i+3]===1))){
+      const sc=d[i+2]===1?3:4;starts.push([i,sc]);i+=sc;
+    }else i++;
+  }
+  if(!starts.length)return d;
+  const parts=[];
+  for(let i=0;i<starts.length;i++){
+    const a=starts[i][0]+starts[i][1],b=i+1<starts.length?starts[i+1][0]:d.length,n=b-a;
+    if(n<=0)continue;
+    const h=new U(lenSz);let v=n;
+    for(let k=lenSz-1;k>=0;k--){h[k]=v&255;v>>>=8}
+    parts.push(h,d.subarray(a,b));
+  }
+  return parts.length?cat(...parts):d;
+}
+function normAvcSample(d,lenSz){
+  if(!d||!lenSz||lenSz<1||lenSz>4)return d;
+  if(isAvccSample(d,lenSz))return d;
+  if(d.length>=4&&d[0]===0&&d[1]===0&&(d[2]===1||(d[2]===0&&d[3]===1)))return annexBToAvcc(d,lenSz);
+  return d;
+}
 function vidCandidates(vt){
   if(!vt||!vt.codec)return[];
   const cp=vt.cp;
   if(vt.codec==='V_MPEG4/ISO/AVC'){
-    if(!cp||cp.length<4)return[];
-    const hex=[1,2,3].map(i=>cp[i].toString(16).padStart(2,'0')).join('');
-    return[{tag:'avc1',cbox:'avcC',cdata:cp,mime:`video/mp4; codecs="avc1.${hex}"`,brand:'avc1',lenSz:0,stripParam:false}];
+    const info=avcInfo(cp);if(!info)return[];
+    const tags=info.nSps===0?['avc3','avc1']:['avc1','avc3'];
+    return tags.map(tag=>({tag,cbox:'avcC',cdata:cp,mime:`video/mp4; codecs="${tag}.${info.hex}"`,brand:'avc1',lenSz:info.lenSz,stripParam:false,avc:info}));
   }
   if(vt.codec==='V_MPEGH/ISO/HEVC'){
     if(!cp||cp.length<23)return[];
@@ -887,9 +947,14 @@ function vidCandidates(vt){
   }
   return[];
 }
-function pickVidCfg(vt,MS){
+function pickVidCfg(vt,MS,forceCodec=false){
   const cands=vidCandidates(vt);
   if(!cands.length)return{cfg:null,err:'vídeo '+codecLabel(vt?.codec)+' não suportado para remux'};
+  const avc=cands[0].avc;
+  if(!forceCodec&&avc&&(avc.bd>8||avc.chroma>1)){
+    const desc=avc.bd>8?`${avc.bd}-bit (High 10)`:`4:${avc.chroma===2?'2:2':'4:4'}`;
+    return{cfg:null,hiColor:true,err:`vídeo H.264 ${desc} causa cores borradas neste browser`};
+  }
   const cfg=cands.find(c=>!MS||typeof MS.isTypeSupported!=='function'||MS.isTypeSupported(c.mime));
   return cfg?{cfg,err:''}:{cfg:null,err:'o browser não suporta '+cands[0].mime};
 }
@@ -937,7 +1002,7 @@ const audMimes=t=>t.codec==='A_EAC3'?['audio/mp4; codecs="ec-3"']
 const audMime=t=>audMimes(t)[0]||'';
 function pickAudMime(t,MS){
   const M=MS||window.MediaSource||window.ManagedMediaSource,ms=audMimes(t);
-  if(!ms.length||!t||t.ca===0||t.enc)return'';
+  if(!ms.length||!t||(t.ca!==undefined&&t.ca!==3)||t.enc)return'';
   if(t.codec==='A_FLAC'&&(!t.cp||t.cp.length<4))return'';
   return ms.find(m=>!M||typeof M.isTypeSupported!=='function'||M.isTypeSupported(m))||'';
 }
@@ -975,15 +1040,17 @@ function stop(){
   try{URL.revokeObjectURL(G.url)}catch(_){}
   G=null;
 }
-function mkCodecErr(msg,T,MS,vt,vcfg){
+function mkCodecErr(msg,T,MS,vt,vcfg,extra={}){
   const e=new Error(msg);e.fatalCodec=true;
   const audT=(T||[]).filter(t=>t.type===2);
   e.vCodec=vt?.codec||'';e.vLabel=codecLabel(e.vCodec);
   e.aCodecs=audT.map(t=>t.codec||'');e.aLabels=audT.map(t=>codecLabel(t.codec));
   e.vSupported=!!vcfg;e.vTag=vcfg?.tag||'';
+  if(extra.hiColor){e.hiColor=true;e.noNativeFallback=true}
   return e;
 }
-async function start(f,v,t0,pref,hk={}){stop();
+async function start(f,v,t0,pref,hk={},opts={}){stop();
+  const forceCodec=!!(opts.forceCodec||hk.forceCodec);
   const MS=window.MediaSource||window.ManagedMediaSource,g=G={dead:false,sk:0,rst:true,ini:null,ac:new AbortController(),fdSet:false,lastSeekPos:-1,skT:0,pendV:[],pendA:[]};
   const first=new Promise((res,rej)=>{g.ok=res;g.no=rej});first.catch(()=>{});
   const settleOk=()=>{if(g.ok){g.ok();g.ok=null;g.no=null}};
@@ -1002,7 +1069,7 @@ async function start(f,v,t0,pref,hk={}){stop();
   const parseInfo=(buf,s,e)=>kids(buf,s,e,(i,s2,e2)=>{if(i===0x2AD7B1)tcs=uint(buf,s2,e2);else if(i===0x4489)dur=flt(buf,s2,e2)});
   const parseTracks=(buf,s,e)=>kids(buf,s,e,(i,s2,e2)=>{if(i!==0xAE)return;const t={};kids(buf,s2,e2,(j,s3,e3)=>{
     if(j===0xD7)t.n=uint(buf,s3,e3);else if(j===0x22B59C)t.lang=String.fromCharCode(...buf.subarray(s3,e3)).replace(/\0/g,'');else if(j===0x22B59D)t.bcp=String.fromCharCode(...buf.subarray(s3,e3)).replace(/\0/g,'');else if(j===0x536E)t.name=new TextDecoder().decode(buf.subarray(s3,e3));else if(j===0x55AA)t.frc=uint(buf,s3,e3);else if(j===0x83)t.type=uint(buf,s3,e3);else if(j===0x86)t.codec=String.fromCharCode(...buf.subarray(s3,e3));
-    else if(j===0x63A2)t.cp=buf.slice(s3,e3);else if(j===0x6D80)kids(buf,s3,e3,(k,s4,e4)=>{if(k===0x6240)kids(buf,s4,e4,(l,s5,e5)=>{if(l===0x5034){t.ca=0;kids(buf,s5,e5,(m,s6,e6)=>{if(m===0x4254)t.ca=uint(buf,s6,e6);else if(m===0x4255)t.cs=buf.slice(s6,e6)})}else if(l===0x5035)t.enc=true})});else if(j===0x23E383)t.dd=uint(buf,s3,e3)/1e6;
+    else if(j===0x63A2)t.cp=buf.slice(s3,e3);else if(j===0x6D80)kids(buf,s3,e3,(k,s4,e4)=>{if(k===0x6240){let sc=1;kids(buf,s4,e4,(l,s5,e5)=>{if(l===0x5032)sc=uint(buf,s5,e5);else if(l===0x5034){t.ca=0;kids(buf,s5,e5,(m,s6,e6)=>{if(m===0x4254)t.ca=uint(buf,s6,e6);else if(m===0x4255)t.cs=buf.slice(s6,e6)})}else if(l===0x5035)t.enc=true});t.cscope=sc}});else if(j===0x23E383)t.dd=uint(buf,s3,e3)/1e6;
     else if(j===0xE0)kids(buf,s3,e3,(k,s4,e4)=>{if(k===0xB0)t.W=uint(buf,s4,e4);else if(k===0xBA)t.H=uint(buf,s4,e4)});
     else if(j===0xE1)kids(buf,s3,e3,(k,s4,e4)=>{if(k===0xB5)t.sr=flt(buf,s4,e4);else if(k===0x9F)t.ch=uint(buf,s4,e4)})});T.push(t)});
   while(!g.dead){
@@ -1038,18 +1105,18 @@ async function start(f,v,t0,pref,hk={}){stop();
       if(ih&&ih.id===0x1549A966&&ih.sz>0&&ih.sz<(1<<20)){const idat=await rng(f,infoAt,infoAt+ih.hl+ih.sz-1,g.ac.signal);parseInfo(idat,ih.hl,idat.length)}}catch(e){if(e.name==='AbortError')return}
   }
   if(clus1<0)throw new Error('cabeçalho MKV demasiado grande');
+  const dd={};T.forEach(t=>{if(t.dd)dd[t.n]=t.dd;if(t.ca===3&&t.cs){const sc=t.cscope??1;if(sc&1)t.strip=t.cs;if((sc&2)&&t.cp)t.cp=cat(t.cs,t.cp)}});
   const audTracks=T.filter(t=>t.type===2),hasAnyAud=audTracks.length>0;
-  let vt=T.find(t=>t.type===1&&pickVidCfg(t,MS).cfg)||T.find(t=>t.type===1);
+  let vt=T.find(t=>t.type===1&&pickVidCfg(t,MS,forceCodec).cfg)||T.find(t=>t.type===1);
   let at=(hk.aud&&T.find(t=>t.type===2&&t.n===hk.aud&&audSupported(t,MS)))
     ||(pref==='aac'&&T.find(t=>t.type===2&&/^A_AAC/.test(t.codec)&&audSupported(t,MS)))
     ||(!pref&&hk.pa&&T.find(t=>t.type===2&&audSupported(t,MS)&&hk.lb(t)===hk.pa))
     ||T.find(t=>t.type===2&&audSupported(t,MS))
     ||null;
-  const dd={};T.forEach(t=>{if(t.dd)dd[t.n]=t.dd;if(t.ca===3&&t.cs)t.strip=t.cs});
-  if(vt&&(vt.ca===0||vt.enc))throw mkCodecErr(vt.enc?'vídeo encriptado (DRM), não suportado':'pista de vídeo comprimida (zlib), não suportado',T,MS,vt);
-  if(at&&(at.ca===0||at.enc))throw mkCodecErr(at.enc?'áudio encriptado (DRM), não suportado':'pista de áudio comprimida (zlib), não suportado',T,MS,vt);
-  const vp=pickVidCfg(vt,MS);
-  if(!vp.cfg)throw mkCodecErr(vp.err||'sem pista de vídeo compatível',T,MS,vt);
+  if(vt&&((vt.ca!==undefined&&vt.ca!==3)||vt.enc))throw mkCodecErr(vt.enc?'vídeo encriptado (DRM), não suportado':'pista de vídeo comprimida, não suportado',T,MS,vt);
+  if(at&&((at.ca!==undefined&&at.ca!==3)||at.enc))throw mkCodecErr(at.enc?'áudio encriptado (DRM), não suportado':'pista de áudio comprimida, não suportado',T,MS,vt);
+  const vp=pickVidCfg(vt,MS,forceCodec);
+  if(!vp.cfg)throw mkCodecErr(vp.err||'sem pista de vídeo compatível',T,MS,vt,null,{hiColor:vp.hiColor});
   if(hasAnyAud&&!at){
     const rawNames=audTracks.map(t=>codecLabel(t.codec)).join(', ');
     throw mkCodecErr(`áudio (${rawNames}) não suportado neste browser`,T,MS,vt,vp.cfg);
@@ -1127,21 +1194,42 @@ async function start(f,v,t0,pref,hk={}){stop();
     const fx=(x,t)=>t.strip?{...x,d:cat(t.strip,x.d)}:x,hx=d=>[...d.slice(0,12)].map(x=>x.toString(16).padStart(2,'0')).join(' ');
     if(hk.sub)for(const x of out){try{const t=SM.get(x.tr);if(!t)continue;const u=sub(fx(x,t).d,t.codec);if(u)hk.sub(x.tr,x.ts/1000,(x.ts+(x.bd||3000))/1000,u)}catch(_){}}
     if(!g.ini&&eac&&!hk.aud){const c=audTracks.filter(t=>t.codec==='A_EAC3').find(c=>{const x=out.find(y=>y.tr===c.n);if(!x)return false;const d=fx(x,c).d;return d[0]===0x0B&&d[1]===0x77});if(c){at=c;hk.cur&&hk.cur(c.n)}}
-    let V=out.filter(x=>x.tr===vt.n).map(x=>{const r=fx(x,vt);return vcfg.stripParam?{...r,d:cleanHevcSample(r.d,vcfg.lenSz)}:r});
+    let V=out.filter(x=>x.tr===vt.n).map(x=>{const r=fx(x,vt);if(vcfg.stripParam)return{...r,d:cleanHevcSample(r.d,vcfg.lenSz)};if(vcfg.avc&&vcfg.lenSz)return{...r,d:normAvcSample(r.d,vcfg.lenSz)};return r});
     let A=hasAud?out.filter(x=>x.tr===at.n).map(x=>fx(x,at)):[];
-    if(!g.ini){
+    if(!g.ini||!vs.sync){
       if(V.length)g.pendV.push(...V);
       if(A.length)g.pendA.push(...A);
+      if(!vs.sync&&g.pendV.length){
+        const ki=g.pendV.findIndex(x=>x.key);
+        if(ki<0){
+          if(!flush&&g.pendV.length<150)return;
+          vs.sync=true;
+        }else{
+          if(ki>0)g.pendV=g.pendV.slice(ki);
+          if(g.pendA.length&&g.pendV.length){
+            const aCut=g.pendV[0].ts-80,aKeep=g.pendA.filter(a=>a.ts>=aCut);
+            if(aKeep.length)g.pendA=aKeep;
+          }
+          vs.sync=true;
+        }
+      }
       const waitMore=(!g.pendV.length||(hasAud&&!g.pendA.length))&&!flush&&(g.pendV.length+g.pendA.length)<300;
       if(waitMore)return;
       if(!g.pendV.length)return;
-      if(hasAud&&!g.pendA.length)return;
+      if(!g.ini&&hasAud&&!g.pendA.length)return;
       V=g.pendV;A=g.pendA;g.pendV=[];g.pendA=[];
-      if(!vt.dd&&!g.fdSet&&V.length>=4){
+    }
+    if(!g.ini){
+      if(!g.fdSet&&V.length>=4){
         const pts=V.map(x=>x.ts).sort((a,b)=>a-b),dl=[];
         for(let i=1;i<pts.length;i++){const dt=pts[i]-pts[i-1];if(dt>2&&dt<200)dl.push(dt)}
-        if(dl.length>=2){dl.sort((a,b)=>a-b);const med=dl[dl.length>>1],FPS=[1000/23.976,1000/24,40,1000/29.97,1000/30,20,1000/59.94,1000/60];
-          fdur=FPS.find(f0=>Math.abs(f0-med)<0.35)||med}
+        if(dl.length>=2){
+          dl.sort((a,b)=>a-b);const med=dl[dl.length>>1];
+          if(!vt.dd||med>vt.dd*1.45||med<vt.dd*0.65){
+            const FPS=[1000/23.976,1000/24,40,1000/29.97,1000/30,20,1000/59.94,1000/60];
+            fdur=FPS.find(f0=>Math.abs(f0-med)<0.35)||med;
+          }
+        }
         g.fdSet=true;
       }
       let minDelta=0;const t0v=V[0].ts;
@@ -1163,14 +1251,23 @@ async function start(f,v,t0,pref,hk={}){stop();
     }
     if(g.rst){await waitIdle(vsb);if(!pm.dead&&ms.readyState==='open')vsb.timestampOffset=-D/1000;await app(vsb,g.ini.v);if(asb)await app(asb,g.ini.a);g.rst=false}
     await trim();if(pm.dead||g.dead)return;
-    if(V.length){if(vs.t0===null)vs.t0=Math.max(0,V[0].ts);const k0=vs.n,dR=k=>Math.round(vs.t0+k*fdur);
-      const S=V.map((x,i)=>({d:Math.max(1,dR(k0+i+1)-dR(k0+i)),sz:x.d.length,fl:x.key?0x2000000:0x1010000,c:Math.max(0,Math.round(x.ts-(vs.t0+(k0+i)*fdur)+D)),data:x.d}));
-      vs.n+=V.length;await app(vsb,frag(S,Math.max(0,dR(k0)),1))}
+    if(V.length){
+      if(vs.t0===null){vs.t0=Math.max(0,V[0].ts);vs.dts=vs.t0}
+      const base=Math.round(vs.dts);let curDts=base,minC=1e9;
+      for(let i=0;i<V.length;i++)minC=Math.min(minC,V[i].ts-(vs.dts+i*fdur)+D);
+      const step=minC<fdur?fdur*0.97:(minC>D+4*fdur?fdur*1.03:fdur);
+      const S=V.map((x,i)=>{
+        const nxt=Math.round(vs.dts+(i+1)*step),d=Math.max(1,nxt-curDts);
+        const c=Math.max(0,Math.round(x.ts-curDts+D));curDts+=d;
+        return{d,sz:x.d.length,fl:x.key?0x2000000:0x1010000,c,data:x.d};
+      });
+      vs.dts=curDts;vs.n+=V.length;await app(vsb,frag(S,base,1));
+    }
     if(A.length&&asb){const q=A.map(x=>Math.round(x.ts)),dDef=as.d||24;
       const S=A.map((x,i)=>{const rd=i<q.length-1?q[i+1]-q[i]:dDef;return{d:rd>0?rd:dDef,sz:x.d.length,data:x.d}});
       if(S.length>1)as.d=S[S.length-2].d;await app(asb,frag(S,Math.max(0,q[0]),0))}
     settleOk()};
-  const run=async(pm,from)=>{let buf=new U(0),bo=from,p=from,eof=false;const vs={n:0,t0:null},as={};
+  const run=async(pm,from)=>{let buf=new U(0),bo=from,p=from,eof=false;const vs={n:0,t0:null,dts:null,sync:false},as={};
     const need=async e=>{while(bo+buf.length<e&&!eof&&!pm.dead){const a=bo+buf.length;if(f.size&&a>=f.size){eof=true;break}const c=await rng(f,a,a+CH-1,pm.ac.signal);if(!c.length){eof=true;break}buf=cat(buf,c)}};
     while(!pm.dead){
       while(!pm.dead&&ahead()>40)await new Promise(r=>setTimeout(r,400));
@@ -1224,7 +1321,7 @@ async function start(f,v,t0,pref,hk={}){stop();
   if(t0>0)v.currentTime=t0;
   v.onseeking=()=>{clearTimeout(g.skT);g.skT=setTimeout(()=>{if(g.dead)return;const t=v.currentTime,r=v.buffered;for(let i=0;i<r.length;i++)if(r.start(i)<=t&&r.end(i)>t+1)return;reseek(t).catch(e=>{if(e.name!=='AbortError')console.warn('seek',e)})},150)};
 }
-return{ok,start,stop,rv,eh,blocks,aacCfg,audSupported,vidCandidates,cleanHevcSample,ac3Info,opusDops,flacBlocks}})();
+return{ok,start,stop,rv,eh,blocks,aacCfg,audSupported,vidCandidates,pickVidCfg,avcInfo,normAvcSample,cleanHevcSample,ac3Info,opusDops,flacBlocks}})();
 
 /* ---- áudio e legendas ---- */
 const OWN=new WeakSet();
@@ -1414,15 +1511,23 @@ function resetVidEl(v){
   v.onloadeddata=v.onloadedmetadata=v.oncanplay=v.onplaying=v.onerror=v.ontimeupdate=v.onpause=v.onended=v.onseeking=null;
   v._tOff=0;v.pause();v.style.display='none';v.removeAttribute('src');try{v.load()}catch(_){}
 }
-function showPlayError(f,why,is404,mk){
+function showPlayError(f,why,is404,mk,opts={}){
   const l=$('#ld'),canBff=typeof hasBFF==='function'&&hasBFF()&&BFF.authenticated,canTc=canBff&&BFF.hasFfmpeg,extSafe=S.key||!canBff;
+  const hwHint=(opts.resumeBtn||opts.forceCodecBtn)?'<div style="font-size:13px;color:#cfcfd6;margin-top:10px">Dica Chrome/macOS: testa o Player do Drive, VLC/IINA/Infuse, Safari ou desativa <code>chrome://flags/#disable-accelerated-video-decode</code>.</div>':'';
   l.style.display='flex';l.style.pointerEvents='auto';
-  l.innerHTML=`<div style="max-width:640px">${esc(why)}<div class="btns" style="justify-content:center;margin-top:20px"><button class="btn" data-ld="retry">↻ Tentar novamente</button>${is404?'<button class="btn s" data-ld="rescan">⟳ Atualizar biblioteca</button><button class="btn s" data-ld="forget">Remover do histórico</button>':'<button class="btn" data-ld="embed">▶ Player do Drive</button><button class="btn s" data-ld="dl">↓ Descarregar</button>'}${canTc?'<button class="btn" data-ld="transcode">⚙ Transcodificar (ffmpeg)</button>':''}${!is404?`<button class="btn" data-ld="ext" data-app="vlc">▶ Abrir no VLC</button><button class="btn s" data-ld="ext" data-app="iina">IINA</button><button class="btn s" data-ld="ext" data-app="infuse">Infuse</button><button class="btn s" data-ld="copy">Copiar link</button><button class="btn s" data-ld="m3u">Ficheiro .m3u</button>`:''}${!is404&&extSafe?`<a class="btn s" style="text-decoration:none" href="${esc(safeUrl(direct(f)))}" target="_blank" rel="noopener">Abrir link direto</a>`:''}</div></div>`;
+  l.innerHTML=`<div style="max-width:640px">${esc(why)}${hwHint}<div class="btns" style="justify-content:center;margin-top:20px">${opts.resumeBtn?'<button class="btn" data-ld="resume">▶ Voltar ao vídeo</button>':''}<button class="btn" data-ld="retry">↻ Tentar novamente</button>${opts.forceCodecBtn?'<button class="btn s" data-ld="forceCodec">Forçar no browser</button>':''}${is404?'<button class="btn s" data-ld="rescan">⟳ Atualizar biblioteca</button><button class="btn s" data-ld="forget">Remover do histórico</button>':'<button class="btn" data-ld="embed">▶ Player do Drive</button><button class="btn s" data-ld="dl">↓ Descarregar</button>'}${canTc?'<button class="btn" data-ld="transcode">⚙ Transcodificar (ffmpeg)</button>':''}${!is404?`<button class="btn" data-ld="ext" data-app="vlc">▶ Abrir no VLC</button><button class="btn s" data-ld="ext" data-app="iina">IINA</button><button class="btn s" data-ld="ext" data-app="infuse">Infuse</button><button class="btn s" data-ld="copy">Copiar link</button><button class="btn s" data-ld="m3u">Ficheiro .m3u</button>`:''}${!is404&&extSafe?`<a class="btn s" style="text-decoration:none" href="${esc(safeUrl(direct(f)))}" target="_blank" rel="noopener">Abrir link direto</a>`:''}</div></div>`;
+}
+function openPlayerHelp(){
+  if(!cur)return;
+  const v=$('#vid');if(v&&!v.paused)v.pause();
+  showPlayError(cur,'Se a imagem ficar com cores borradas (comum em H.264 10-bit/4:2:2 ou aceleração hardware no Chrome/Mac) ou houver problemas de som, usa uma destas opções:',false,/\.(mkv|avi)$/i.test(cur.name),{resumeBtn:true});
 }
 $('#ld').addEventListener('click',e=>{
   const b=e.target.closest('[data-ld]');if(!b||!cur)return;
   const f=cur,act=b.dataset.ld;
   if(act==='retry')play(f.id);
+  else if(act==='resume'){$('#ld').style.display='none';$('#ld').style.pointerEvents='none';$('#vid').play().catch(()=>{})}
+  else if(act==='forceCodec')play(f.id,{forceCodec:true});
   else if(act==='embed')driveEmbed(f.id);
   else if(act==='dl')dl(f.id);
   else if(act==='transcode')playTranscode(f.id,lastVCopy?{vCopy:true,vTag:lastVTag}:{});
@@ -1528,9 +1633,9 @@ async function playTranscode(id,opts={}){
   v.src=`/api/transcode/${encodeURIComponent(f.id)}`+(qStr?'?'+qStr:'');
   v.style.display='block';loadExtSubs(f,v);v.play().catch(()=>{});
 }
-async function play(id){
+async function play(id,opts={}){
   const f=byId(id);if(!f)return toast('Ficheiro não encontrado na biblioteca.');
-  MKV.stop();tkReset();revokeBlobUrl();if(typeof s51Reset==='function')s51Reset();mkErr='';tcTriedId='';lastVCopy=false;lastVTag='';cur=f;
+  MKV.stop();tkReset();revokeBlobUrl();if(typeof s51Reset==='function')s51Reset();mkErr='';tcTriedId='';lastVCopy=false;lastVTag='';cur=f;HK.forceCodec=!!opts.forceCodec;
   const v=$('#vid');resetVidEl(v);
   const lib=S.libs.find(l=>l.id===f.lib),eps=lib&&lib.type==='series'&&f.show?showsOf(lib)[f.show]:[];
   nxt=eps[eps.findIndex(e=>e.id===id)+1]||null;$('#nx').style.display=nxt?'block':'none';
@@ -1542,11 +1647,12 @@ async function play(id){
     if(isMkv&&MKV.ok()){
       try{
         $('#ld').textContent='A preparar o MKV…';const t0=!p.w&&p.t>5?p.t:0;
-        try{await MKV.start(f,v,t0,'',HK)}catch(e){
+        const mOpts={forceCodec:!!opts.forceCodec};
+        try{await MKV.start(f,v,t0,'',HK,mOpts)}catch(e){
           if(e.name==='AbortError'||cur!==f)throw e;
           if(!/ec-3|E-AC-3/i.test(e.message))throw e;
           console.warn('EAC3 falhou, a tentar AAC:',e.message);TK.pref='aac';
-          await MKV.start(f,v,t0,'aac',HK);toast('A usar a pista AAC: a pista EAC3 deste ficheiro não é compatível');
+          await MKV.start(f,v,t0,'aac',HK,mOpts);toast('A usar a pista AAC: a pista EAC3 deste ficheiro não é compatível');
         }
         mkv=true;
       }catch(e){
@@ -1560,6 +1666,10 @@ async function play(id){
         if(typeof hasBFF==='function'&&hasBFF()&&BFF.authenticated&&BFF.hasFfmpeg&&(e.fatalCodec||/não é|não suport|zlib/i.test(e.message))){
           toast('Codec incompatível para remux — a mudar para transcodificação ffmpeg…');
           return playTranscode(id,lastVCopy?{vCopy:true,vTag:lastVTag}:{});
+        }
+        if(e.noNativeFallback){
+          showPlayError(f,mkErr,false,true,{forceCodecBtn:!!e.hiColor});
+          return;
         }
         toast('Remux MKV: '+e.message+'. A testar método alternativo…');
       }
