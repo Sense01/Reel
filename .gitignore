@@ -1,0 +1,4 @@
+.reel-config.json
+.reel-sessions.json
+.DS_Store
+node_modules/
