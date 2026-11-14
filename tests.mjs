@@ -214,7 +214,7 @@ function loadAppContext({ hasBFFMeta = false, fetchMock } = {}) {
   const api = vm.runInContext(
     `({
       S, V, MKV, TK, HK, BFF,
-      clean, se, pickShowName, artKey, isId, safeUrl, esc, auth,
+      clean, se, pickShowName, artKey, isId, safeUrl, esc, auth, isVideoFile,
       srtToVtt, assToVtt, parseVttCues, findExtSubs, reconcileProgress, forgetProg,
       persist, askStop, P, setCur: v => { cur = v; }, setPrompt: fn => { prompt = fn; },
       byId, loadF, render, render2, covers, swUrl, direct, mediaUrl, hasBFF,
@@ -886,4 +886,203 @@ test('Auth silent proactive refresh & single-flight mutex + BFF unauthenticated 
   assert.equal(promptCalls, 1);
   assert.equal(t1, 'tok-renewed');
   assert.equal(t2, 'tok-renewed');
+});
+
+test('MKV codecs: HEVC (hvc1/hev1), cleanHevcSample, AV1, VP9, AC-3, Opus, FLAC & structured errors', async () => {
+  const { api, byIdMap, drain } = loadAppContext();
+  await drain();
+  const { MKV } = api;
+
+  // 1. HEVC (Main 10 L4.0 + constraint B0 + in-band param sets) -> [hvc1+cs, hvc1, hev1+cs, hev1]
+  const hvcC = new Uint8Array(24);
+  hvcC[0] = 1;
+  hvcC[1] = 2; // profile_space=0, tier=0 (L), profile_idc=2
+  hvcC[2] = 0x60; // profile_compatibility_flags (MSB bits -> reversed hex '6')
+  hvcC[6] = 0xb0; // constraint_indicator_flags -> 'B0'
+  hvcC[12] = 120; // general_level_idc -> L120
+  hvcC[21] = 0xff; // lengthSizeMinusOne=3 -> lenSz=4
+  hvcC[22] = 3; // numOfArrays=3
+  const hevcCands = MKV.vidCandidates({ codec: 'V_MPEGH/ISO/HEVC', w: 1920, h: 1080, cp: hvcC });
+  assert.equal(hevcCands.length, 4);
+  assert.equal(hevcCands[0].tag, 'hvc1');
+  assert.equal(hevcCands[0].stripParam, true);
+  assert.equal(hevcCands[0].lenSz, 4);
+  assert.equal(hevcCands[0].mime, 'video/mp4; codecs="hvc1.2.6.L120.B0"');
+  assert.equal(hevcCands[1].tag, 'hvc1');
+  assert.equal(hevcCands[1].mime, 'video/mp4; codecs="hvc1.2.6.L120"');
+  assert.equal(hevcCands[2].tag, 'hev1');
+  assert.equal(hevcCands[2].stripParam, false);
+  assert.equal(hevcCands[2].mime, 'video/mp4; codecs="hev1.2.6.L120.B0"');
+  assert.equal(hevcCands[3].tag, 'hev1');
+  assert.equal(hevcCands[3].mime, 'video/mp4; codecs="hev1.2.6.L120"');
+
+  // Empty hvcC numOfArrays=0 (and no constraint bytes) -> 2 candidates without NALU stripping
+  const hvcCEmpty = new Uint8Array(hvcC);
+  hvcCEmpty[6] = 0;
+  hvcCEmpty[22] = 0;
+  const hevNoPs = MKV.vidCandidates({ codec: 'V_MPEGH/ISO/HEVC', w: 1920, h: 1080, cp: hvcCEmpty });
+  assert.equal(hevNoPs.length, 2);
+  assert.equal(hevNoPs[0].tag, 'hvc1');
+  assert.equal(hevNoPs[1].tag, 'hev1');
+  assert.equal(hevNoPs.every(c => c.stripParam === false), true);
+
+  // cleanHevcSample strips VPS (32), SPS (33), PPS (34) while keeping IDR slice (19) intact
+  const nalu = payload => new Uint8Array([0, 0, 0, payload.length, ...payload]);
+  const rawSample = new Uint8Array([
+    ...nalu([0x40, 0x01, 0xaa]),       // type 32 VPS
+    ...nalu([0x42, 0x01, 0xbb, 0xcc]), // type 33 SPS
+    ...nalu([0x44, 0x01]),             // type 34 PPS
+    ...nalu([0x26, 0x01, 0xde, 0xad]), // type 19 IDR
+  ]);
+  const cleaned = MKV.cleanHevcSample(rawSample, 4);
+  assert.deepEqual(Array.from(cleaned), Array.from(nalu([0x26, 0x01, 0xde, 0xad])));
+
+  // 2. AV1 & VP9 video codec candidates
+  const av1C = new Uint8Array([0x81, 0x08, 0x00, 0x00]);
+  const av1Cands = MKV.vidCandidates({ codec: 'V_AV1', w: 1920, h: 1080, cp: av1C });
+  assert.equal(av1Cands[0].tag, 'av01');
+  assert.equal(av1Cands[0].cbox, 'av1C');
+  assert.equal(av1Cands[0].mime, 'video/mp4; codecs="av01.0.08M.08"');
+
+  const vp9Tlv = new Uint8Array([1, 1, 2, 2, 1, 31, 3, 1, 10, 4, 1, 1]);
+  const vp9Cands = MKV.vidCandidates({ codec: 'V_VP9', w: 3840, h: 2160, cp: vp9Tlv });
+  assert.equal(vp9Cands[0].tag, 'vp09');
+  assert.equal(vp9Cands[0].cbox, 'vpcC');
+  assert.match(vp9Cands[0].mime, /^video\/mp4; codecs="vp09\.02\.31\.10/);
+
+  // 3. AC-3, Opus, FLAC & audSupported
+  // AC-3 syncframe: 0x0B 0x77, fscod=0 (48kHz), bsid=8, bsmod=0, acmod=7 (3/2) + lfeon=1 (5.1)
+  const ac3Info = MKV.ac3Info(new Uint8Array([0x0b, 0x77, 0x00, 0x00, 0x1c, 0x40, 0xe1]));
+  assert.equal(ac3Info.fs, 48000);
+  assert.equal(ac3Info.ch, 6);
+  assert.equal(ac3Info.dac3.length, 3);
+
+  // OpusHead (LE preSkip=312, sr=48000) -> dOps (version=0, BE preSkip, BE sr)
+  const opusHead = new Uint8Array([
+    0x4f, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64, // "OpusHead"
+    1, 2, 0x38, 0x01, 0x80, 0xbb, 0x00, 0x00, 0x00, 0x00, 0,
+  ]);
+  const dOps = MKV.opusDops({ cp: opusHead });
+  assert.deepEqual(Array.from(dOps), [0, 2, 0x01, 0x38, 0x00, 0x00, 0xbb, 0x80, 0, 0, 0]);
+
+  // FLAC CodecPrivate ("fLaC" magic stripped for fb('dfLa', 0, 0, flacBlocks(at)))
+  const flacCp = new Uint8Array([0x66, 0x4c, 0x61, 0x43, 0x80, 0x00, 0x00, 0x04, 1, 2, 3, 4]);
+  const dfLaBlocks = MKV.flacBlocks({ cp: flacCp });
+  assert.deepEqual(Array.from(dfLaBlocks), [0x80, 0x00, 0x00, 0x04, 1, 2, 3, 4]);
+
+  const ChromeMS = { isTypeSupported: m => /(avc1|hvc1|av01|vp09|mp4a|opus|flac)/.test(m) };
+  const SafariMS = { isTypeSupported: m => /(avc1|hvc1|mp4a|ac-3|ec-3)/.test(m) };
+  assert.equal(MKV.audSupported({ codec: 'A_OPUS' }, ChromeMS), true);
+  assert.equal(MKV.audSupported({ codec: 'A_FLAC', cp: flacCp }, ChromeMS), true);
+  assert.equal(MKV.audSupported({ codec: 'A_FLAC' }, ChromeMS), false);
+  assert.equal(MKV.audSupported({ codec: 'A_AC3' }, ChromeMS), false);
+  assert.equal(MKV.audSupported({ codec: 'A_AC3' }, SafariMS), true);
+  assert.equal(MKV.audSupported({ codec: 'A_OPUS', enc: true }, ChromeMS), false);
+  assert.equal(MKV.audSupported({ codec: 'A_AAC', ca: 0 }, ChromeMS), false);
+
+  // 4. Synthetic MKV (H.265 + AC-3) fails fast with structured codec metadata when MS rejects AC-3
+  const el = (idBytes, body) => {
+    const len = body.length;
+    const sz = len < 127 ? [0x80 | len] : [0x40 | (len >> 8), len & 0xff];
+    return new Uint8Array([...idBytes, ...sz, ...body]);
+  };
+  const concatU8 = arrs => {
+    const out = new Uint8Array(arrs.reduce((s, a) => s + a.length, 0));
+    let o = 0;
+    for (const a of arrs) { out.set(a, o); o += a.length; }
+    return out;
+  };
+  const f64 = n => {
+    const b = new Uint8Array(8);
+    new DataView(b.buffer).setFloat64(0, n, false);
+    return b;
+  };
+  const str = s => Buffer.from(s, 'utf8');
+  const synthMkv = concatU8([
+    el([0x1a, 0x45, 0xdf, 0xa3], el([0x42, 0x82], str('matroska'))),
+    el([0x18, 0x53, 0x80, 0x67], concatU8([
+      el([0x15, 0x49, 0xa9, 0x66], el([0x2a, 0xd7, 0xb1], new Uint8Array([0x0f, 0x42, 0x40]))),
+      el([0x16, 0x54, 0xae, 0x6b], concatU8([
+        el([0xae], concatU8([
+          el([0xd7], new Uint8Array([1])),
+          el([0x83], new Uint8Array([1])),
+          el([0x86], str('V_MPEGH/ISO/HEVC')),
+          el([0xe0], concatU8([
+            el([0xb0], new Uint8Array([0x07, 0x80])),
+            el([0xba], new Uint8Array([0x04, 0x38])),
+          ])),
+          el([0x63, 0xa2], hvcC),
+        ])),
+        el([0xae], concatU8([
+          el([0xd7], new Uint8Array([2])),
+          el([0x83], new Uint8Array([2])),
+          el([0x86], str('A_AC3')),
+          el([0xe1], concatU8([
+            el([0xb5], f64(48000)),
+            el([0x9f], new Uint8Array([6])),
+          ])),
+        ])),
+      ])),
+      el([0x1f, 0x43, 0xb6, 0x75], concatU8([
+        el([0xe7], new Uint8Array([0])),
+        el([0xa3], new Uint8Array(24)),
+      ])),
+    ])),
+  ]);
+
+  const mkvRangeFetch = async (_u, init = {}) => {
+    const m = /^bytes=(\d+)-(\d*)$/.exec(init.headers?.Range || init.headers?.range || '');
+    const s = m ? Number(m[1]) : 0;
+    const e = m && m[2] ? Math.min(synthMkv.length - 1, Number(m[2])) : synthMkv.length - 1;
+    const slice = synthMkv.subarray(s, e + 1);
+    return new Response(slice, {
+      status: 206,
+      headers: {
+        'Content-Range': `bytes ${s}-${e}/${synthMkv.length}`,
+        'Content-Length': String(slice.length),
+      },
+    });
+  };
+  const chromeCtx = loadAppContext({ fetchMock: mkvRangeFetch });
+  await chromeCtx.drain();
+  chromeCtx.api.setToken('tok-test', Date.now() + 60000);
+  chromeCtx.ctx.MediaSource.isTypeSupported = m => /(avc1|hvc1|av01|vp09|mp4a|opus|flac)/.test(m);
+  await assert.rejects(
+    chromeCtx.api.MKV.start({ id: 'HEVCMKV', size: synthMkv.length }, chromeCtx.byIdMap.get('vid'), 0, '', {}),
+    err => err && err.fatalCodec === true && err.vCodec === 'V_MPEGH/ISO/HEVC' && err.vSupported === true && err.vTag === 'hvc1' && err.aCodecs.includes('A_AC3')
+  );
+});
+
+test('Extended video formats & server.js inferMime / transcode auth guard', async () => {
+  const { inferMime, createReelServer } = require('./server.js');
+  assert.equal(inferMime('clip.ts'), 'video/mp2t');
+  assert.equal(inferMime('disc.m2ts'), 'video/mp2t');
+  assert.equal(inferMime('stream.flv'), 'video/x-flv');
+  assert.equal(inferMime('legacy.wmv'), 'video/x-ms-wmv');
+  assert.equal(inferMime('dvd.mpg'), 'video/mpeg');
+  assert.equal(inferMime('subs.ass'), 'text/plain; charset=utf-8');
+  assert.equal(inferMime('subs.ssa'), 'text/plain; charset=utf-8');
+
+  const { api, drain } = loadAppContext();
+  await drain();
+  for (const name of ['Movie.ts', 'Disc.m2ts', 'Stream.flv', 'Clip.wmv', 'Old.mpg', 'Disc2.mpeg', 'Top Gun Maverick (2022).mkv']) {
+    assert.equal(api.isVideoFile({ name, mimeType: '' }), true, `Expected video recognition for ${name}`);
+  }
+  for (const nonVid of ['Subs.ass', 'Subs.ssa', 'Subs.srt', 'Poster.jpg']) {
+    assert.equal(api.isVideoFile({ name: nonVid, mimeType: '' }), false, `Expected non-video for ${nonVid}`);
+  }
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reel-tr-'));
+  try {
+    const srvObj = createReelServer({
+      staticDir: ROOT,
+      configPath: path.join(tmpDir, 'config.json'),
+      sessionsPath: path.join(tmpDir, 'sessions.json'),
+    });
+    const srv = typeof srvObj.listen === 'function' ? srvObj : srvObj.server;
+    const rUnauth = await invokeServer(srv, '/api/transcode/VID1?vcopy=1&vtag=hvc1');
+    assert.equal(rUnauth.status, 401);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });

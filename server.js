@@ -20,8 +20,16 @@ const MIME_BY_EXT = {
   mkv: 'video/x-matroska',
   mov: 'video/quicktime',
   avi: 'video/x-msvideo',
+  ts: 'video/mp2t',
+  m2ts: 'video/mp2t',
+  flv: 'video/x-flv',
+  wmv: 'video/x-ms-wmv',
+  mpg: 'video/mpeg',
+  mpeg: 'video/mpeg',
   srt: 'text/plain; charset=utf-8',
-  vtt: 'text/vtt; charset=utf-8'
+  vtt: 'text/vtt; charset=utf-8',
+  ass: 'text/plain; charset=utf-8',
+  ssa: 'text/plain; charset=utf-8'
 };
 
 function inferMime(name, upstreamType) {
@@ -499,12 +507,14 @@ function createReelServer(options = {}) {
       // Optional ffmpeg live fragmented-MP4 remux/transcode
       const trMatch = pathname.match(/^\/api\/transcode\/([\w-]+)$/);
       if (req.method === 'GET' && trMatch) {
-        if (!hasFfmpeg) return sendJson(res, 501, { error: 'ffmpeg não está disponível no servidor' });
         const sid = getSid(req);
-        await ensureAccessToken(sid); // verify session before spawning
+        await ensureAccessToken(sid); // verify session before probing ffmpeg or spawning
+        if (!hasFfmpeg) return sendJson(res, 501, { error: 'ffmpeg não está disponível no servidor' });
         const fileId = trMatch[1];
         const t0 = Math.max(0, Number(u.searchParams.get('t')) || 0);
         const vCopy = u.searchParams.get('vcopy') === '1';
+        const rawTag = u.searchParams.get('vtag') || '';
+        const vTag = /^(avc1|hvc1|hev1|vp09|av01)$/.test(rawTag) ? rawTag : '';
         const addr = server.address();
         const localHost = addr.address === '::' ? '[::1]' : (addr.address === '0.0.0.0' ? '127.0.0.1' : (addr.family === 'IPv6' ? `[${addr.address}]` : addr.address));
         const localBase = `http://${localHost}:${addr.port}/api/stream/${fileId}`;
@@ -512,10 +522,12 @@ function createReelServer(options = {}) {
         const args = [
           '-hide_banner', '-loglevel', 'error',
           '-headers', `x-reel-internal: ${internalToken}\r\nx-reel-sid: ${sid}\r\n`,
-          '-ss', String(t0),
+          ...(t0 > 0 ? ['-ss', String(t0)] : []),
           '-i', localBase,
           '-map', '0:v:0', '-map', '0:a:0?',
-          ...(vCopy ? ['-c:v', 'copy'] : ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p']),
+          ...(vCopy
+            ? ['-c:v', 'copy', ...(vTag ? ['-tag:v', vTag] : [])]
+            : ['-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p']),
           '-c:a', 'aac', '-ac', '2', '-b:a', '192k',
           '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
           'pipe:1'

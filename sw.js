@@ -12,8 +12,16 @@ const MIME_BY_EXT = {
   mkv: 'video/x-matroska',
   mov: 'video/quicktime',
   avi: 'video/x-msvideo',
+  ts: 'video/mp2t',
+  m2ts: 'video/mp2t',
+  flv: 'video/x-flv',
+  wmv: 'video/x-ms-wmv',
+  mpg: 'video/mpeg',
+  mpeg: 'video/mpeg',
   srt: 'text/plain; charset=utf-8',
-  vtt: 'text/vtt; charset=utf-8'
+  vtt: 'text/vtt; charset=utf-8',
+  ass: 'text/plain; charset=utf-8',
+  ssa: 'text/plain; charset=utf-8'
 };
 
 function inferMime(name, upstreamType) {
